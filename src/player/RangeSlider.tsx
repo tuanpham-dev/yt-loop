@@ -112,9 +112,9 @@ export function RangeSlider({
         />
       </div>
 
-      {disabled ? (
-        <div className="mt-2 font-hand text-sm text-ink-soft">Waiting for video duration…</div>
-      ) : null}
+      <div className={`mt-2 font-hand text-sm text-ink-soft ${disabled ? '' : 'invisible'}`}>
+        Waiting for video duration…
+      </div>
     </div>
   );
 }

@@ -25,7 +25,7 @@ export function SortableItemRow({
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
-    transition,
+    transition: isDragging ? 'none' : transition,
     opacity: isDragging ? 0.7 : 1,
   };
 
@@ -33,7 +33,7 @@ export function SortableItemRow({
     <li
       ref={setNodeRef}
       style={style}
-      className={`group flex items-center gap-3 rounded-sketch-sm border-[3px] border-ink px-3 py-2 shadow-sketch-sm transition-all ${
+      className={`group flex items-center gap-3 rounded-sketch-sm border-[3px] border-ink px-3 py-2 shadow-sketch-sm ${
         isActive ? 'bg-sticky-yellow' : 'bg-paper hover:bg-paper-50'
       }`}
     >
