@@ -90,13 +90,13 @@ export const YouTubePlayer = forwardRef<PlayerHandle, YouTubePlayerProps>(
     }));
 
     return (
-      <div className="aspect-video w-full bg-ink">
+      <div className="relative aspect-video w-full bg-ink [&>iframe]:absolute [&>iframe]:inset-0">
         {loadError ? (
-          <div className="flex h-full items-center justify-center bg-paper-50 font-hand text-xl text-accent">
+          <div className="absolute inset-0 flex items-center justify-center bg-paper-50 font-hand text-xl text-accent">
             {loadError}
           </div>
         ) : (
-          <div ref={containerRef} className="h-full w-full" />
+          <div ref={containerRef} className="absolute inset-0" />
         )}
       </div>
     );

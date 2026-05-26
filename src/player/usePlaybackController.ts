@@ -31,6 +31,7 @@ export interface PlaybackControls {
 
 export function usePlaybackController(
   playerRef: React.RefObject<PlayerHandle>,
+  isDocPipOpen: boolean,
 ): PlaybackControls {
   const dispatch = useDispatch();
   const state = usePlaylists();
@@ -40,6 +41,11 @@ export function usePlaybackController(
   const [error, setError] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+
+  // loadSeq increments on every natural video end or explicit prev/next to force
+  // a reload even when the active item id doesn't change (single-item playlists).
+  const [loadSeq, setLoadSeq] = useState(0);
+  const loadedSeqRef = useRef(0);
 
   const loadedVideoRef = useRef<string | null>(null);
   const loadedItemIdRef = useRef<string | null>(null);
@@ -56,18 +62,24 @@ export function usePlaybackController(
   const onStateChange = useCallback(
     (s: number) => {
       // 0 = ENDED — natural completion, advance.
-      if (s === 0) dispatch({ type: 'NEXT' });
+      if (s === 0) {
+        setLoadSeq((n) => n + 1);
+        dispatch({ type: 'NEXT' });
+      }
     },
     [dispatch],
   );
 
-  // Load video whenever the active item changes.
+  // Load video whenever the active item changes or a force-reload is requested.
   useEffect(() => {
+    if (isDocPipOpen) return;
     if (!isReady || !activeItem || !playerRef.current) return;
     const videoChanged =
       loadedItemIdRef.current !== activeItem.id ||
       loadedVideoRef.current !== activeItem.videoId;
-    if (videoChanged) {
+    const seqChanged = loadSeq !== loadedSeqRef.current;
+    if (videoChanged || seqChanged) {
+      loadedSeqRef.current = loadSeq;
       setError(null);
       playerRef.current.setVolume(activeItem.volume);
       playerRef.current.loadVideo(activeItem.videoId, activeItem.startSec);
@@ -76,14 +88,15 @@ export function usePlaybackController(
     } else {
       playerRef.current.setVolume(activeItem.volume);
     }
-  }, [activeItem, isReady, playerRef]);
+  }, [activeItem, isReady, playerRef, isDocPipOpen, loadSeq]);
 
   // React to play/pause toggles.
   useEffect(() => {
+    if (isDocPipOpen) return;
     if (!isReady || !activeItem || !playerRef.current) return;
     if (state.isPlaying) playerRef.current.play();
     else playerRef.current.pause();
-  }, [state.isPlaying, activeItem, isReady, playerRef]);
+  }, [state.isPlaying, activeItem, isReady, playerRef, isDocPipOpen]);
 
   // Reset duration whenever the loaded video changes; the player reports the
   // real duration once metadata is parsed.
@@ -103,19 +116,94 @@ export function usePlaybackController(
       if (d > 0) setDuration((prev) => (prev === d ? prev : d));
       const item = activeItemRef.current;
       if (item && state.isPlaying && item.endSec > 0 && t >= item.endSec) {
+        setLoadSeq((n) => n + 1);
         dispatch({ type: 'NEXT' });
       }
     }, POLL_MS);
     return () => clearInterval(interval);
   }, [isReady, state.isPlaying, dispatch, playerRef]);
 
+  // Media Session API — exposes OS-level media controls (lock screen, notification bar, etc.)
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return;
+    if (!activeItem) {
+      navigator.mediaSession.metadata = null;
+      navigator.mediaSession.playbackState = 'none';
+      return;
+    }
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: activeItem.title,
+      artwork: activeItem.thumbnailUrl
+        ? [{ src: activeItem.thumbnailUrl, sizes: '480x360', type: 'image/jpeg' }]
+        : [],
+    });
+  }, [activeItem]);
+
+  useEffect(() => {
+    if (!('mediaSession' in navigator) || !activeItem) return;
+    navigator.mediaSession.playbackState = state.isPlaying ? 'playing' : 'paused';
+  }, [state.isPlaying, activeItem]);
+
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return;
+    navigator.mediaSession.setActionHandler('play', () =>
+      dispatch({ type: 'SET_PLAYING', isPlaying: true }),
+    );
+    navigator.mediaSession.setActionHandler('pause', () =>
+      dispatch({ type: 'SET_PLAYING', isPlaying: false }),
+    );
+    navigator.mediaSession.setActionHandler('nexttrack', () => {
+      setLoadSeq((n) => n + 1);
+      dispatch({ type: 'NEXT' });
+    });
+    navigator.mediaSession.setActionHandler('previoustrack', () => {
+      setLoadSeq((n) => n + 1);
+      dispatch({ type: 'PREV' });
+    });
+    navigator.mediaSession.setActionHandler('seekto', (details) => {
+      if (details.seekTime != null) playerRef.current?.seekTo(details.seekTime);
+    });
+    navigator.mediaSession.setActionHandler('seekforward', (details) => {
+      const skip = details.seekOffset ?? 10;
+      playerRef.current?.seekTo((playerRef.current.getCurrentTime() ?? 0) + skip);
+    });
+    navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+      const skip = details.seekOffset ?? 10;
+      playerRef.current?.seekTo(Math.max(0, (playerRef.current.getCurrentTime() ?? 0) - skip));
+    });
+    return () => {
+      (['play', 'pause', 'nexttrack', 'previoustrack', 'seekto', 'seekforward', 'seekbackward'] as const).forEach(
+        (action) => navigator.mediaSession.setActionHandler(action, null),
+      );
+    };
+  }, [dispatch, playerRef]);
+
+  useEffect(() => {
+    if (!('mediaSession' in navigator) || duration <= 0) return;
+    try {
+      navigator.mediaSession.setPositionState({
+        duration,
+        playbackRate: 1,
+        position: Math.min(currentTime, duration),
+      });
+    } catch {
+      /* ignore — setPositionState throws if values are out of range */
+    }
+  }, [currentTime, duration]);
+
   const togglePlay = useCallback(() => {
     if (!activeItem) return;
     dispatch({ type: 'SET_PLAYING', isPlaying: !state.isPlaying });
   }, [dispatch, state.isPlaying, activeItem]);
 
-  const next = useCallback(() => dispatch({ type: 'NEXT' }), [dispatch]);
-  const prev = useCallback(() => dispatch({ type: 'PREV' }), [dispatch]);
+  const next = useCallback(() => {
+    setLoadSeq((n) => n + 1);
+    dispatch({ type: 'NEXT' });
+  }, [dispatch]);
+  const prev = useCallback(() => {
+    setLoadSeq((n) => n + 1);
+    dispatch({ type: 'PREV' });
+  }, [dispatch]);
   const clearError = useCallback(() => setError(null), []);
 
   const playerHandlers = useMemo(

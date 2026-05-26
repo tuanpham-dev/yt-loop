@@ -11,13 +11,17 @@ const supportsDocPip = 'documentPictureInPicture' in window;
 
 export function RootLayout() {
   const playerRef = useRef<PlayerHandle>(null);
-  const controls = usePlaybackController(playerRef);
   const activeItem = useActiveItem();
   const dispatch = useDispatch();
   const { activePlaylistId, isPlaying } = usePlaylists();
 
   const [isPip, setIsPip] = useState(false);
   const [isDocPipOpen, setIsDocPipOpen] = useState(false);
+  // pipNavSeq increments on every pip prev/next so the pip:load effect fires
+  // even when the active item id doesn't change (single-item playlists).
+  const [pipNavSeq, setPipNavSeq] = useState(0);
+
+  const controls = usePlaybackController(playerRef, isDocPipOpen);
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const docPipWinRef = useRef<Window | null>(null);
   // Prevents the observer from re-activating scroll-PiP while scrolling back to the player.
@@ -158,28 +162,25 @@ html,body{height:100%;background:#000;overflow:hidden;display:flex;flex-directio
     const onMsg = (e: MessageEvent) => {
       if (e.source !== docPipWinRef.current) return;
       const type = e.data?.type;
-      if (type === 'pip:next') { lastPipTimeRef.current = 0; dispatch({ type: 'NEXT' }); }
-      if (type === 'pip:prev') { lastPipTimeRef.current = 0; dispatch({ type: 'PREV' }); }
+      if (type === 'pip:next') { lastPipTimeRef.current = 0; dispatch({ type: 'NEXT' }); setPipNavSeq((n) => n + 1); }
+      if (type === 'pip:prev') { lastPipTimeRef.current = 0; dispatch({ type: 'PREV' }); setPipNavSeq((n) => n + 1); }
       if (type === 'pip:time') lastPipTimeRef.current = e.data.t;
     };
     window.addEventListener('message', onMsg);
     return () => window.removeEventListener('message', onMsg);
   }, [isDocPipOpen, dispatch]);
 
-  // When active item changes while pip is open, push the new video into the pip window.
-  // Dep is activeItem?.id only — we intentionally skip the initial render
-  // (initial video is already written by document.write in openDocPip).
-  const prevPipItemIdRef = useRef<string | null>(null);
+  // When active item changes or pip nav fires (even for same item), push the video into the pip window.
+  // docPipWinRef.current is null until the pip window opens, so the initial render is a no-op.
   useEffect(() => {
     if (!activeItem || !docPipWinRef.current) return;
-    if (prevPipItemIdRef.current === activeItem.id) return;
-    prevPipItemIdRef.current = activeItem.id;
     docPipWinRef.current.postMessage(
       { type: 'pip:load', videoId: activeItem.videoId, startSec: 0, title: activeItem.title },
       '*',
     );
+  // pipNavSeq triggers this even when activeItem.id is unchanged (single-item playlists).
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeItem?.id]);
+  }, [activeItem?.id, pipNavSeq]);
 
   const expandPip = () => {
     pipLockedRef.current = true;
@@ -233,8 +234,8 @@ html,body{height:100%;background:#000;overflow:hidden;display:flex;flex-directio
           <div
             className={
               isPip
-                ? 'fixed bottom-4 right-4 z-50 w-72 overflow-hidden rounded-sketch border-[3px] border-ink bg-ink shadow-[6px_6px_0_0_rgba(45,45,45,0.45)]'
-                : 'relative overflow-hidden rounded-sketch border-[3px] border-ink bg-ink shadow-sketch'
+                ? 'fixed bottom-4 right-4 z-50 w-72 overflow-hidden rounded-sketch border-[3px] border-ink bg-ink shadow-[6px_6px_0_0_rgba(45,45,45,0.45)] [transform:translateZ(0)]'
+                : 'relative overflow-hidden rounded-sketch border-[3px] border-ink bg-ink shadow-sketch [transform:translateZ(0)]'
             }
           >
             <YouTubePlayer ref={playerRef} {...controls.playerHandlers} />
