@@ -163,6 +163,13 @@ export function reducer(state: AppState, action: Action): AppState {
         ),
       }));
 
+    case 'IMPORT_PLAYLIST':
+      return {
+        ...state,
+        playlists: [...state.playlists, action.playlist],
+        activePlaylistId: state.activePlaylistId ?? action.playlist.id,
+      };
+
     default:
       return state;
   }

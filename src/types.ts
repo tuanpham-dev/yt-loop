@@ -35,4 +35,5 @@ export type Action =
   | { type: 'NEXT' }
   | { type: 'PREV' }
   | { type: 'SET_PLAYING'; isPlaying: boolean }
-  | { type: 'SET_VOLUME'; playlistId: string; itemId: string; volume: number };
+  | { type: 'SET_VOLUME'; playlistId: string; itemId: string; volume: number }
+  | { type: 'IMPORT_PLAYLIST'; playlist: Playlist };

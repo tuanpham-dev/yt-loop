@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useDispatch, usePlaylists } from '../state/PlaylistsContext';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Modal } from '../ui/Modal';
 import { EmptyState } from '../ui/EmptyState';
+import { ErrorBanner } from '../ui/ErrorBanner';
+import { parsePlaylistFile } from '../lib/exportImport';
 
 const STICKY_TINTS = ['bg-sticky-yellow', 'bg-sticky-pink', 'bg-sticky-green', 'bg-sticky-blue'];
 
@@ -14,6 +16,21 @@ export function PlaylistsPage() {
   const [newName, setNewName] = useState('');
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const [deleting, setDeleting] = useState<{ id: string; name: string } | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const onImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!fileInputRef.current) return;
+    fileInputRef.current.value = '';
+    if (!file) return;
+    try {
+      const playlist = await parsePlaylistFile(file);
+      dispatch({ type: 'IMPORT_PLAYLIST', playlist });
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Failed to import playlist.');
+    }
+  };
 
   const onCreate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,17 +51,32 @@ export function PlaylistsPage() {
         </p>
       </section>
 
-      <form onSubmit={onCreate} className="flex gap-2">
-        <Input
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          placeholder="New playlist name…"
-          aria-label="New playlist name"
-        />
-        <Button type="submit" variant="primary" disabled={!newName.trim()}>
-          + Create
-        </Button>
-      </form>
+      <div className="flex flex-col gap-2">
+        <form onSubmit={onCreate} className="flex gap-2">
+          <Input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="New playlist name…"
+            aria-label="New playlist name"
+          />
+          <Button type="submit" variant="primary" disabled={!newName.trim()}>
+            + Create
+          </Button>
+          <Button onClick={() => fileInputRef.current?.click()} type="button">
+            Import
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={onImport}
+          />
+        </form>
+        {importError ? (
+          <ErrorBanner message={importError} onDismiss={() => setImportError(null)} />
+        ) : null}
+      </div>
 
       {playlists.length === 0 ? (
         <EmptyState

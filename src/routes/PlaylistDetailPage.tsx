@@ -24,6 +24,7 @@ import {
   parseYouTubeId,
 } from '../lib/youtube';
 import { newId } from '../lib/id';
+import { exportPlaylist } from '../lib/exportImport';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Modal } from '../ui/Modal';
@@ -114,6 +115,7 @@ export function PlaylistDetailPage() {
         <h1 className="flex-1 truncate font-hand text-3xl font-bold text-ink">
           {playlist.name}
         </h1>
+        <Button onClick={() => exportPlaylist(playlist)}>Export</Button>
       </div>
 
       <form onSubmit={onAdd} className="flex flex-col gap-2">
