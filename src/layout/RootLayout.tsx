@@ -235,7 +235,7 @@ html,body{height:100%;background:#000;overflow:hidden;display:flex;flex-directio
             className={
               isPip
                 ? 'fixed bottom-4 right-4 z-50 w-72 overflow-hidden rounded-sketch border-[3px] border-ink bg-ink shadow-[6px_6px_0_0_rgba(45,45,45,0.45)] [transform:translateZ(0)]'
-                : 'relative overflow-hidden rounded-sketch border-[3px] border-ink bg-ink shadow-sketch [transform:translateZ(0)]'
+                : 'overflow-hidden rounded-sketch border-[3px] border-ink bg-ink shadow-sketch'
             }
           >
             <YouTubePlayer ref={playerRef} {...controls.playerHandlers} />
