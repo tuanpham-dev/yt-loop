@@ -11,7 +11,7 @@ body,
 body {
   background-color: #fdfbf7;
   color: #2d2d2d;
-  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'Patrick Hand', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   /* Faint notebook-paper tint */
   background-image:
     radial-gradient(rgba(45, 45, 45, 0.04) 1px, transparent 1px);

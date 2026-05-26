@@ -30,6 +30,7 @@ export default {
       fontFamily: {
         hand: ['Kalam', 'Caveat', 'cursive'],
         sans: [
+          'Patrick Hand',
           'ui-sans-serif',
           'system-ui',
           '-apple-system',

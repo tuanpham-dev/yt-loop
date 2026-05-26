@@ -1,11 +1,11 @@
 import { useCallback, useRef } from 'react';
-import { Link, NavLink, Outlet } from 'react-router-dom';
+import { Outlet } from 'react-router-dom';
 import { YouTubePlayer, type PlayerHandle } from '../player/YouTubePlayer';
-import { PlayerBar } from '../player/PlayerBar';
 import { RangeSlider } from '../player/RangeSlider';
 import { usePlaybackController } from '../player/usePlaybackController';
 import { ErrorBanner } from '../ui/ErrorBanner';
 import { useActiveItem, useDispatch, usePlaylists } from '../state/PlaylistsContext';
+import { TopBar } from './TopBar';
 
 export function RootLayout() {
   const playerRef = useRef<PlayerHandle>(null);
@@ -46,31 +46,11 @@ export function RootLayout() {
 
   return (
     <div className="flex min-h-full flex-col text-ink">
-      <header className="border-b-2 border-ink bg-paper/90 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center gap-4 px-4 py-3">
-          <Link to="/playlists" className="flex items-baseline gap-1 font-hand text-3xl font-bold leading-none">
-            YouTube <span className="sketch-underline text-accent">Loop</span>
-          </Link>
-          <nav className="ml-auto flex items-center gap-2">
-            <NavLink
-              to="/playlists"
-              className={({ isActive }) =>
-                `rounded-sketch-sm border-2 px-3 py-1 font-hand text-base transition-all ${
-                  isActive
-                    ? 'border-ink bg-sticky-yellow shadow-sketch-press'
-                    : 'border-transparent text-ink-soft hover:text-ink'
-                }`
-              }
-            >
-              Playlists
-            </NavLink>
-          </nav>
-        </div>
-      </header>
+      <TopBar controls={controls} />
 
       <div className="mx-auto w-full max-w-5xl px-4 pt-4">
         <div className={activeItem ? 'block' : 'sr-only'} aria-hidden={!activeItem}>
-          <div className="rounded-sketch border-[3px] border-ink bg-ink shadow-sketch overflow-hidden">
+          <div className="overflow-hidden rounded-sketch border-[3px] border-ink bg-ink shadow-sketch">
             <YouTubePlayer ref={playerRef} {...controls.playerHandlers} />
           </div>
         </div>
@@ -97,8 +77,6 @@ export function RootLayout() {
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
         <Outlet />
       </main>
-
-      <PlayerBar controls={controls} />
     </div>
   );
 }
