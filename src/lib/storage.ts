@@ -19,7 +19,6 @@ export function loadState(): AppState {
     return {
       ...initialState,
       ...parsed,
-      isPlaying: false,
     };
   } catch {
     return initialState;
