@@ -4,7 +4,7 @@ import { YouTubePlayer, type PlayerHandle } from '../player/YouTubePlayer';
 import { RangeSlider } from '../player/RangeSlider';
 import { usePlaybackController } from '../player/usePlaybackController';
 import { ErrorBanner } from '../ui/ErrorBanner';
-import { useActiveItem, useDispatch, usePlaylists } from '../state/PlaylistsContext';
+import { useActiveItem, useActivePlaylist, useDispatch, usePlaylists } from '../state/PlaylistsContext';
 import { TopBar } from './TopBar';
 
 const supportsDocPip = 'documentPictureInPicture' in window;
@@ -12,14 +12,25 @@ const supportsDocPip = 'documentPictureInPicture' in window;
 export function RootLayout() {
   const playerRef = useRef<PlayerHandle>(null);
   const activeItem = useActiveItem();
+  const activePlaylist = useActivePlaylist();
   const dispatch = useDispatch();
   const { activePlaylistId, isPlaying } = usePlaylists();
 
   const [isPip, setIsPip] = useState(false);
   const [isDocPipOpen, setIsDocPipOpen] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const savedVolumeRef = useRef(100);
   // pipNavSeq increments on every pip prev/next so the pip:load effect fires
   // even when the active item id doesn't change (single-item playlists).
   const [pipNavSeq, setPipNavSeq] = useState(0);
+
+  useEffect(() => {
+    if (activeItem && activePlaylist) {
+      document.title = `YouTube Loop - ${activePlaylist.name} - ${activeItem.title}`;
+    } else {
+      document.title = 'YouTube Loop';
+    }
+  }, [activeItem, activePlaylist]);
 
   const controls = usePlaybackController(playerRef, isDocPipOpen);
   const playerContainerRef = useRef<HTMLDivElement>(null);
@@ -102,7 +113,7 @@ html,body{height:100%;background:#000;overflow:hidden;display:flex;flex-directio
 <script>
 (function(){
   var fr=document.getElementById('player'),pp=document.getElementById('pp'),
-      ttl=document.getElementById('ttl'),playing=false;
+      ttl=document.getElementById('ttl'),playing=true;
 
   // Register as a listener so YouTube sends onStateChange/onReady events back.
   fr.addEventListener('load',function(){
@@ -114,10 +125,15 @@ html,body{height:100%;background:#000;overflow:hidden;display:flex;flex-directio
   }
   document.getElementById('pv').onclick=function(){window.opener.postMessage({type:'pip:prev'},'*');};
   document.getElementById('nx').onclick=function(){window.opener.postMessage({type:'pip:next'},'*');};
-  pp.onclick=function(){ytCmd(playing?'pauseVideo':'playVideo');};
+  pp.onclick=function(){
+    if(playing){ytCmd('pauseVideo');playing=false;pp.textContent='▶';}
+    else{ytCmd('playVideo');playing=true;pp.textContent='⏸';}
+  };
 
   window.addEventListener('message',function(e){
-    if(e.source===fr.contentWindow){
+    // YouTube iframes may send from a nested frame; match by origin as well as source.
+    var isYT=e.source===fr.contentWindow||e.origin==='https://www.youtube.com'||e.origin==='https://www.youtube-nocookie.com';
+    if(isYT){
       try{
         var d=typeof e.data==='string'?JSON.parse(e.data):e.data;
         if(d&&d.event==='onReady'){ytCmd('playVideo');}
@@ -137,7 +153,7 @@ html,body{height:100%;background:#000;overflow:hidden;display:flex;flex-directio
       fr.src='https://www.youtube.com/embed/'+e.data.videoId+
         '?autoplay=1&start='+(e.data.startSec||0)+'&rel=0&playsinline=1&enablejsapi=1';
       ttl.textContent=e.data.title||'';
-      playing=false;pp.textContent='⏸';
+      playing=true;pp.textContent='⏸';
     }
   });
 })();
@@ -218,9 +234,21 @@ html,body{height:100%;background:#000;overflow:hidden;display:flex;flex-directio
     playerRef.current?.seekTo(sec);
   }, []);
 
+  const toggleMute = useCallback(() => {
+    if (!activeItem || !activePlaylistId) return;
+    if (isMuted) {
+      setIsMuted(false);
+      dispatch({ type: 'SET_VOLUME', playlistId: activePlaylistId, itemId: activeItem.id, volume: savedVolumeRef.current });
+    } else {
+      savedVolumeRef.current = activeItem.volume || 100;
+      setIsMuted(true);
+      dispatch({ type: 'SET_VOLUME', playlistId: activePlaylistId, itemId: activeItem.id, volume: 0 });
+    }
+  }, [activeItem, activePlaylistId, dispatch, isMuted]);
+
   return (
     <div className="flex min-h-full flex-col text-ink">
-      <TopBar controls={controls} />
+      <TopBar />
 
       <div className="mx-auto w-full max-w-5xl px-4 pt-4">
         <div
@@ -239,19 +267,6 @@ html,body{height:100%;background:#000;overflow:hidden;display:flex;flex-directio
             }
           >
             <YouTubePlayer ref={playerRef} {...controls.playerHandlers} />
-
-            {/* Document PiP button — overlaid top-right of the video, desktop only */}
-            {supportsDocPip && activeItem && !isPip && !isDocPipOpen && (
-              <button
-                type="button"
-                onClick={openDocPip}
-                aria-label="Open picture-in-picture"
-                title="Picture-in-picture"
-                className="absolute right-2 top-2 hidden rounded border-2 border-ink/60 bg-ink/50 px-2 py-1 font-hand text-xs text-paper backdrop-blur-sm hover:bg-ink/75 md:block"
-              >
-                ⧉ PiP
-              </button>
-            )}
 
             {isPip && activeItem && (
               <div className="flex items-center gap-1.5 bg-paper px-2 py-1.5">
@@ -297,7 +312,7 @@ html,body{height:100%;background:#000;overflow:hidden;display:flex;flex-directio
         </div>
 
         {activeItem && !isPip ? (
-          <div className="mt-4">
+          <div className="mt-4 select-none overflow-hidden rounded-sketch-sm border-[3px] border-ink bg-paper-50 shadow-sketch-sm">
             <RangeSlider
               startSec={activeItem.startSec}
               endSec={activeItem.endSec}
@@ -307,6 +322,121 @@ html,body{height:100%;background:#000;overflow:hidden;display:flex;flex-directio
               onChangeEnd={onChangeEnd}
               onCommitStart={onCommitStart}
             />
+
+            {/* Player controls row */}
+            <div className="flex items-center justify-between bg-paper px-4 py-3 sm:grid sm:grid-cols-[1fr_auto_1fr]">
+              {/* Left spacer — desktop only, balances the right volume group */}
+              <div className="hidden sm:block">
+                {controls.duration <= 0 && (
+                  <span className="font-hand text-xs text-ink-soft">Waiting for duration…</span>
+                )}
+              </div>
+
+              {/* Transport buttons — left on mobile, centered on desktop */}
+              <div className="flex items-center gap-1 sm:gap-2">
+                <button
+                  type="button"
+                  onClick={controls.prev}
+                  aria-label="Previous"
+                  className="rounded-full border-2 border-ink bg-paper p-2 text-ink shadow-sketch-press transition-transform hover:bg-sticky-yellow active:scale-95"
+                >
+                  <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                    <path d="M6 6h2v12H6V6zm3.5 6L18 18V6L9.5 12z"/>
+                  </svg>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={controls.togglePlay}
+                  aria-label={isPlaying ? 'Pause' : 'Play'}
+                  className="mx-1 flex h-11 w-11 items-center justify-center rounded-full border-2 border-ink bg-accent text-paper shadow-sketch-sm transition-all hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-sketch-press active:scale-95 active:shadow-none"
+                >
+                  {isPlaying ? (
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6">
+                      <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6 translate-x-[1px]">
+                      <path d="M8 5v14l11-7z"/>
+                    </svg>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={controls.next}
+                  aria-label="Next"
+                  className="rounded-full border-2 border-ink bg-paper p-2 text-ink shadow-sketch-press transition-transform hover:bg-sticky-yellow active:scale-95"
+                >
+                  <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                    <path d="M6 6v12l8.5-6zM16.5 6h2v12h-2z"/>
+                  </svg>
+                </button>
+              </div>
+
+              {/* Right: mute + volume slider + pip */}
+              <div className="flex items-center justify-end gap-2">
+                {/* Mute toggle */}
+                <button
+                  type="button"
+                  onClick={toggleMute}
+                  aria-label={isMuted ? 'Unmute' : 'Mute'}
+                  className="rounded-full border-2 border-ink bg-paper p-2 text-ink shadow-sketch-press transition-transform hover:bg-sticky-yellow active:scale-95"
+                >
+                  {isMuted ? (
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                      <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                      <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+                    </svg>
+                  )}
+                </button>
+
+                {/* Volume slider */}
+                <div className="relative h-9 w-20 sm:w-24">
+                  <div className="absolute inset-x-0 top-1/2 h-2 -translate-y-1/2 rounded-full border-2 border-ink bg-paper" />
+                  <div
+                    className="absolute top-1/2 h-2 -translate-y-1/2 rounded-l-full border-y-2 border-l-2 border-ink bg-accent/60"
+                    style={{ width: `${activeItem.volume}%` }}
+                  />
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={activeItem.volume}
+                    onChange={(e) => {
+                      if (!activePlaylistId) return;
+                      if (isMuted) setIsMuted(false);
+                      dispatch({
+                        type: 'SET_VOLUME',
+                        playlistId: activePlaylistId,
+                        itemId: activeItem.id,
+                        volume: parseInt(e.target.value, 10),
+                      });
+                    }}
+                    className="vol-thumb absolute inset-0 m-0 w-full"
+                    aria-label="Volume"
+                  />
+                </div>
+
+                {/* PiP */}
+                {supportsDocPip && !isDocPipOpen && (
+                  <button
+                    type="button"
+                    onClick={openDocPip}
+                    aria-label="Open picture-in-picture"
+                    title="Picture-in-picture"
+                    className="hidden rounded-full border-2 border-ink bg-paper p-2 text-ink shadow-sketch-press transition-transform hover:bg-sticky-yellow active:scale-95 md:block"
+                  >
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                      <path d="M19 7h-8v6h8V7zm2-4H3C1.9 3 1 3.9 1 5v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14z"/>
+                    </svg>
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         ) : null}
 

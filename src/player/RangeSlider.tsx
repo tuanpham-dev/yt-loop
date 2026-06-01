@@ -57,7 +57,7 @@ export function RangeSlider({
 
   return (
     <div
-      className="select-none rounded-sketch-sm border-[3px] border-ink bg-paper-50 px-4 py-3 shadow-sketch-sm"
+      className="select-none px-4 py-3"
       aria-disabled={disabled}
     >
       <div className="mb-2 flex items-center justify-between font-hand text-sm tabular-nums text-ink">
@@ -112,9 +112,6 @@ export function RangeSlider({
         />
       </div>
 
-      <div className={`mt-2 font-hand text-sm text-ink-soft ${disabled ? '' : 'invisible'}`}>
-        Waiting for video duration…
-      </div>
     </div>
   );
 }
