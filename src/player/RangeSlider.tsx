@@ -61,14 +61,14 @@ export function RangeSlider({
       aria-disabled={disabled}
     >
       <div className="mb-2 flex items-center justify-between font-hand text-sm tabular-nums text-ink">
-        <span title="Start" className="rounded border-2 border-ink bg-sticky-yellow px-1.5">
+        <span title="Loop start time for the current video" className="rounded border-2 border-ink bg-sticky-yellow px-1.5">
           {formatTime(clampedStart)}
         </span>
         <span className="text-ink-soft">
           {formatTime(currentTime)}{' '}
           <span className="text-ink-muted">/</span> {formatTime(duration)}
         </span>
-        <span title="End" className="rounded border-2 border-ink bg-sticky-pink px-1.5">
+        <span title="Loop end time for the current video" className="rounded border-2 border-ink bg-sticky-pink px-1.5">
           {formatTime(effectiveEnd)}
         </span>
       </div>
@@ -96,7 +96,8 @@ export function RangeSlider({
           onTouchEnd={commitStart}
           onKeyUp={commitStart}
           disabled={disabled}
-          aria-label="Start time"
+          aria-label="Start time for current video"
+          title="Drag to set the start time for the current video"
           className="range-thumb absolute inset-0 m-0 w-full appearance-none bg-transparent"
         />
         <input
@@ -107,7 +108,8 @@ export function RangeSlider({
           value={effectiveEnd}
           onChange={handleEnd}
           disabled={disabled}
-          aria-label="End time"
+          aria-label="End time for current video"
+          title="Drag to set the end time for the current video"
           className="range-thumb absolute inset-0 m-0 w-full appearance-none bg-transparent"
         />
       </div>

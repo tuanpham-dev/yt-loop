@@ -37,6 +37,7 @@ export function Modal({ open, title, onClose, children }: ModalProps) {
             onClick={onClose}
             className="rounded-full border-2 border-ink bg-paper px-2 leading-none text-ink hover:bg-sticky-yellow"
             aria-label="Close"
+            title="Close"
           >
             ×
           </button>

@@ -13,6 +13,7 @@ export function ErrorBanner({ message, onDismiss }: ErrorBannerProps) {
           onClick={onDismiss}
           className="text-ink/70 hover:text-ink"
           aria-label="Dismiss"
+          title="Dismiss"
         >
           ×
         </button>

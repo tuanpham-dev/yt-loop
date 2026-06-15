@@ -42,6 +42,7 @@ export function SortableItemRow({
         {...attributes}
         {...listeners}
         aria-label="Drag to reorder"
+        title="Drag to reorder"
         className="cursor-grab touch-none rounded border-2 border-ink bg-paper px-2 py-1 font-hand text-base leading-none text-ink-soft hover:bg-sticky-yellow hover:text-ink active:cursor-grabbing"
       >
         ⠿
@@ -90,6 +91,7 @@ export function SortableItemRow({
           type="button"
           onClick={onEdit}
           aria-label="Edit"
+          title="Edit"
           className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-ink bg-paper font-hand text-base leading-none text-ink shadow-sketch-press hover:bg-sticky-yellow sm:h-auto sm:w-auto sm:rounded sm:border-0 sm:bg-transparent sm:px-2 sm:py-1 sm:text-sm sm:shadow-none sm:hover:bg-paper-100"
         >
           <span aria-hidden className="sm:hidden">✎</span>
@@ -99,6 +101,7 @@ export function SortableItemRow({
           type="button"
           onClick={onRemove}
           aria-label="Remove"
+          title="Remove"
           className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-ink bg-paper font-hand text-base leading-none text-accent-dark shadow-sketch-press hover:bg-accent/15 sm:h-auto sm:w-auto sm:rounded sm:border-0 sm:bg-transparent sm:px-2 sm:py-1 sm:text-sm sm:shadow-none sm:hover:bg-accent/10"
         >
           <span aria-hidden className="sm:hidden">×</span>

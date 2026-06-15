@@ -136,9 +136,9 @@ body.baronly #bar{top:0;opacity:1;background:#1a1a1a}
 <div id="player"></div>
 <div id="bar">
   <span id="ttl">${safeTitle}</span>
-  <button class="btn" id="pv">⏮</button>
-  <button class="btn" id="pp">⏸</button>
-  <button class="btn" id="nx">⏭</button>
+  <button class="btn" id="pv" title="Previous">⏮</button>
+  <button class="btn" id="pp" title="Pause">⏸</button>
+  <button class="btn" id="nx" title="Next">⏭</button>
   <button class="btn" id="tb" title="Toolbar only">▬</button>
 </div>
 <script>
@@ -178,8 +178,8 @@ body.baronly #bar{top:0;opacity:1;background:#1a1a1a}
         onStateChange:function(e){
           // 0=ENDED 1=PLAYING 2=PAUSED
           if(e.data===0){toOpener('pip:next');}
-          else if(e.data===1){playing=true;pp.textContent='⏸';}
-          else if(e.data===2){playing=false;pp.textContent='▶';}
+          else if(e.data===1){playing=true;pp.textContent='⏸';pp.title='Pause';}
+          else if(e.data===2){playing=false;pp.textContent='▶';pp.title='Play';}
         }
       }
     });
@@ -220,7 +220,7 @@ body.baronly #bar{top:0;opacity:1;background:#1a1a1a}
     if(e.data.type==='pip:load'&&player){
       if(typeof e.data.volume==='number')VOL=e.data.volume;
       ttl.textContent=e.data.title||'';
-      playing=true;pp.textContent='⏸';
+      playing=true;pp.textContent='⏸';pp.title='Pause';
       player.loadVideoById({videoId:e.data.videoId,startSeconds:e.data.startSec||0});
       player.setVolume(VOL);
     }
@@ -361,6 +361,7 @@ body.baronly #bar{top:0;opacity:1;background:#1a1a1a}
                   type="button"
                   onClick={() => dispatch({ type: 'PREV' })}
                   aria-label="Previous"
+                  title="Previous"
                   className="rounded border-2 border-ink px-1.5 py-0.5 font-hand text-sm leading-none hover:bg-sticky-yellow"
                 >
                   {'<'}
@@ -369,6 +370,7 @@ body.baronly #bar{top:0;opacity:1;background:#1a1a1a}
                   type="button"
                   onClick={controls.togglePlay}
                   aria-label={isPlaying ? 'Pause' : 'Play'}
+                  title={isPlaying ? 'Pause' : 'Play'}
                   className="rounded border-2 border-ink bg-accent px-2 py-0.5 font-hand text-sm font-bold leading-none text-paper hover:opacity-90"
                 >
                   {isPlaying ? '❚❚' : '▶'}
@@ -377,6 +379,7 @@ body.baronly #bar{top:0;opacity:1;background:#1a1a1a}
                   type="button"
                   onClick={() => dispatch({ type: 'NEXT' })}
                   aria-label="Next"
+                  title="Next"
                   className="rounded border-2 border-ink px-1.5 py-0.5 font-hand text-sm leading-none hover:bg-sticky-yellow"
                 >
                   {'>'}
@@ -451,6 +454,7 @@ body.baronly #bar{top:0;opacity:1;background:#1a1a1a}
                   type="button"
                   onClick={controls.prev}
                   aria-label="Previous"
+                  title="Previous"
                   className="rounded-full border-2 border-ink bg-paper p-2 text-ink shadow-sketch-press transition-transform hover:bg-sticky-yellow active:scale-95"
                 >
                   <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
@@ -462,6 +466,7 @@ body.baronly #bar{top:0;opacity:1;background:#1a1a1a}
                   type="button"
                   onClick={controls.togglePlay}
                   aria-label={isPlaying ? 'Pause' : 'Play'}
+                  title={isPlaying ? 'Pause' : 'Play'}
                   className="mx-1 flex h-11 w-11 items-center justify-center rounded-full border-2 border-ink bg-accent text-paper shadow-sketch-sm transition-all hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-sketch-press active:scale-95 active:shadow-none"
                 >
                   {isPlaying ? (
@@ -479,6 +484,7 @@ body.baronly #bar{top:0;opacity:1;background:#1a1a1a}
                   type="button"
                   onClick={controls.next}
                   aria-label="Next"
+                  title="Next"
                   className="rounded-full border-2 border-ink bg-paper p-2 text-ink shadow-sketch-press transition-transform hover:bg-sticky-yellow active:scale-95"
                 >
                   <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
@@ -494,6 +500,7 @@ body.baronly #bar{top:0;opacity:1;background:#1a1a1a}
                   type="button"
                   onClick={toggleMute}
                   aria-label={isMuted ? 'Unmute' : 'Mute'}
+                  title={isMuted ? 'Unmute' : 'Mute'}
                   className="rounded-full border-2 border-ink bg-paper p-2 text-ink shadow-sketch-press transition-transform hover:bg-sticky-yellow active:scale-95"
                 >
                   {isMuted ? (
@@ -530,7 +537,8 @@ body.baronly #bar{top:0;opacity:1;background:#1a1a1a}
                       });
                     }}
                     className="vol-thumb absolute inset-0 m-0 w-full"
-                    aria-label="Volume"
+                    aria-label="Volume for current video"
+                    title="Drag to set the volume for the current video"
                   />
                 </div>
 
