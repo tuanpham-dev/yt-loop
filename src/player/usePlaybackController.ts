@@ -33,6 +33,9 @@ export interface PlaybackControls {
 export function usePlaybackController(
   playerRef: React.RefObject<PlayerHandle>,
   isDocPipOpen: boolean,
+  // Set to the PiP playhead position when the PiP window closes, so the main
+  // player resumes the (possibly advanced) video there instead of from its start.
+  pipResumeRef?: React.MutableRefObject<number | null>,
 ): PlaybackControls {
   const dispatch = useDispatch();
   const state = usePlaylists();
@@ -82,13 +85,16 @@ export function usePlaybackController(
     if (videoChanged || seqChanged) {
       loadedSeqRef.current = loadSeq;
       setError(null);
+      const startAt = pipResumeRef?.current ?? activeItem.startSec;
       playerRef.current.setVolume(activeItem.volume);
-      playerRef.current.loadVideo(activeItem.videoId, activeItem.startSec);
+      playerRef.current.loadVideo(activeItem.videoId, startAt);
       loadedVideoRef.current = activeItem.videoId;
       loadedItemIdRef.current = activeItem.id;
     } else {
       playerRef.current.setVolume(activeItem.volume);
     }
+    // The resume position applies only to this first post-PiP load.
+    if (pipResumeRef) pipResumeRef.current = null;
   }, [activeItem, isReady, playerRef, isDocPipOpen, loadSeq]);
 
   // React to play/pause toggles.

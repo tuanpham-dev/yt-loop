@@ -32,7 +32,9 @@ export function RootLayout() {
     }
   }, [activeItem, activePlaylist]);
 
-  const controls = usePlaybackController(playerRef, isDocPipOpen);
+  // Carries the PiP playhead into the main player when the PiP window closes.
+  const pipResumeRef = useRef<number | null>(null);
+  const controls = usePlaybackController(playerRef, isDocPipOpen, pipResumeRef);
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const docPipWinRef = useRef<Window | null>(null);
   // Prevents the observer from re-activating scroll-PiP while scrolling back to the player.
@@ -84,11 +86,14 @@ export function RootLayout() {
       const safeTitle = activeItem.title
         .replace(/&/g, '&amp;').replace(/</g, '&lt;')
         .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-      const embedSrc =
-        `https://www.youtube.com/embed/${activeItem.videoId}` +
-        `?autoplay=1&start=${startSec}&rel=0&playsinline=1&enablejsapi=1`;
+      const rawOrigin = window.location.origin;
+      const videoId = activeItem.videoId;
 
-      // Write a full HTML document — YouTube rejects embeds in about:blank (error 153).
+      // Drive the PiP player with the official YouTube IFrame API instead of a
+      // hand-rolled postMessage handshake. The official API reliably establishes
+      // the event channel, so onStateChange (ENDED) actually fires and the
+      // playlist auto-advances when a video finishes. A full HTML document is
+      // required — YouTube rejects embeds in about:blank (error 153).
       pipWin.document.open();
       pipWin.document.write(`<!DOCTYPE html>
 <html><head><meta charset="utf-8">
@@ -103,7 +108,7 @@ html,body{height:100%;background:#000;overflow:hidden;display:flex;flex-directio
 #pp{background:#ff4d4d;color:#fff;border-color:#2d2d2d}
 #pp:hover{background:#ff6b6b}
 </style></head><body>
-<iframe id="player" src="${embedSrc}" allow="autoplay; fullscreen" allowfullscreen></iframe>
+<div id="player"></div>
 <div id="bar">
   <span id="ttl">${safeTitle}</span>
   <button class="btn" id="pv">⏮</button>
@@ -112,48 +117,49 @@ html,body{height:100%;background:#000;overflow:hidden;display:flex;flex-directio
 </div>
 <script>
 (function(){
-  var fr=document.getElementById('player'),pp=document.getElementById('pp'),
-      ttl=document.getElementById('ttl'),playing=true;
+  var player=null,playing=true,ORIGIN='${rawOrigin}',
+      INITIAL_VIDEO='${videoId}',INITIAL_START=${startSec},
+      pp=document.getElementById('pp'),ttl=document.getElementById('ttl');
 
-  // Register as a listener so YouTube sends onStateChange/onReady events back.
-  fr.addEventListener('load',function(){
-    fr.contentWindow.postMessage(JSON.stringify({event:'listening',id:1}),'*');
-  });
+  function toOpener(t){if(window.opener)window.opener.postMessage({type:t},'*');}
 
-  function ytCmd(fn){
-    fr.contentWindow.postMessage(JSON.stringify({event:'command',func:fn,args:[]}),'*');
-  }
-  document.getElementById('pv').onclick=function(){window.opener.postMessage({type:'pip:prev'},'*');};
-  document.getElementById('nx').onclick=function(){window.opener.postMessage({type:'pip:next'},'*');};
-  pp.onclick=function(){
-    if(playing){ytCmd('pauseVideo');playing=false;pp.textContent='▶';}
-    else{ytCmd('playVideo');playing=true;pp.textContent='⏸';}
+  document.getElementById('pv').onclick=function(){toOpener('pip:prev');};
+  document.getElementById('nx').onclick=function(){toOpener('pip:next');};
+  pp.onclick=function(){if(!player)return;if(playing)player.pauseVideo();else player.playVideo();};
+
+  window.onYouTubeIframeAPIReady=function(){
+    player=new YT.Player('player',{
+      width:'100%',height:'100%',videoId:INITIAL_VIDEO,
+      playerVars:{autoplay:1,start:INITIAL_START,rel:0,playsinline:1,modestbranding:1,origin:ORIGIN},
+      events:{
+        onReady:function(e){e.target.playVideo();},
+        onStateChange:function(e){
+          // 0=ENDED 1=PLAYING 2=PAUSED
+          if(e.data===0){toOpener('pip:next');}
+          else if(e.data===1){playing=true;pp.textContent='⏸';}
+          else if(e.data===2){playing=false;pp.textContent='▶';}
+        }
+      }
+    });
   };
+  var s=document.createElement('script');
+  s.src='https://www.youtube.com/iframe_api';
+  document.head.appendChild(s);
 
-  window.addEventListener('message',function(e){
-    // YouTube iframes may send from a nested frame; match by origin as well as source.
-    var isYT=e.source===fr.contentWindow||e.origin==='https://www.youtube.com'||e.origin==='https://www.youtube-nocookie.com';
-    if(isYT){
-      try{
-        var d=typeof e.data==='string'?JSON.parse(e.data):e.data;
-        if(d&&d.event==='onReady'){ytCmd('playVideo');}
-        if(d&&d.event==='infoDelivery'&&d.info&&d.info.currentTime!=null){
-          window.opener.postMessage({type:'pip:time',t:d.info.currentTime},'*');
-        }
-        if(d&&d.event==='onStateChange'){
-          if(d.info===0){window.opener.postMessage({type:'pip:next'},'*');}
-          else if(d.info===1){playing=true;pp.textContent='⏸';}
-          else if(d.info===2){playing=false;pp.textContent='▶';}
-        }
-      }catch(x){}
-      return;
+  // Report position so the opener can resume the main player at the right spot on close.
+  setInterval(function(){
+    if(player&&player.getCurrentTime&&window.opener){
+      window.opener.postMessage({type:'pip:time',t:player.getCurrentTime()},'*');
     }
+  },1000);
+
+  // Opener pushes the next/prev video in here; loadVideoById autoplays it.
+  window.addEventListener('message',function(e){
     if(!e.data||typeof e.data!=='object')return;
-    if(e.data.type==='pip:load'){
-      fr.src='https://www.youtube.com/embed/'+e.data.videoId+
-        '?autoplay=1&start='+(e.data.startSec||0)+'&rel=0&playsinline=1&enablejsapi=1';
+    if(e.data.type==='pip:load'&&player){
       ttl.textContent=e.data.title||'';
       playing=true;pp.textContent='⏸';
+      player.loadVideoById({videoId:e.data.videoId,startSeconds:e.data.startSec||0});
     }
   });
 })();
@@ -162,6 +168,10 @@ html,body{height:100%;background:#000;overflow:hidden;display:flex;flex-directio
       pipWin.document.close();
 
       pipWin.addEventListener('pagehide', () => {
+        // Resume the main player at the PiP playhead. seekTo covers the case where
+        // the video is unchanged (no reload); pipResumeRef covers the case where
+        // PiP advanced to a new video, so the controller's reload starts there.
+        pipResumeRef.current = lastPipTimeRef.current;
         playerRef.current?.seekTo(lastPipTimeRef.current);
         docPipWinRef.current = null;
         setIsDocPipOpen(false);
