@@ -69,10 +69,12 @@ export function usePlaybackController(
   }, []);
   const onStateChange = useCallback(
     (s: number) => {
-      // 0 = ENDED — natural completion, advance.
+      // 0 = ENDED — natural completion. AUTO_NEXT honors the repeat mode; the
+      // loadSeq bump forces a reload so 'repeat one' (and single-item loops)
+      // replay even though the active index doesn't change.
       if (s === 0) {
         setLoadSeq((n) => n + 1);
-        dispatch({ type: 'NEXT' });
+        dispatch({ type: 'AUTO_NEXT' });
       }
     },
     [dispatch],
@@ -129,7 +131,7 @@ export function usePlaybackController(
       const item = activeItemRef.current;
       if (item && state.isPlaying && item.endSec > 0 && t >= item.endSec) {
         setLoadSeq((n) => n + 1);
-        dispatch({ type: 'NEXT' });
+        dispatch({ type: 'AUTO_NEXT' });
       }
       // Sync volume changes made via the player's own volume control back into
       // app state. lastVolPushRef matches whatever the app last pushed, so a

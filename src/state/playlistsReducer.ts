@@ -1,9 +1,54 @@
-import type { Action, AppState, Playlist } from '../types';
+import type { Action, AppState, Playlist, PlaylistItem } from '../types';
 import { initialState } from '../lib/storage';
 
 function clampIndex(playlist: Playlist, index: number): number {
   if (playlist.items.length === 0) return 0;
   return Math.max(0, Math.min(index, playlist.items.length - 1));
+}
+
+// Fisher-Yates shuffle of the item ids. When `firstId` is given it is moved to
+// the front so shuffled playback continues from the currently-playing item.
+function shuffledIds(items: PlaylistItem[], firstId?: string): string[] {
+  const ids = items.map((i) => i.id);
+  for (let i = ids.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+  }
+  if (firstId) {
+    const idx = ids.indexOf(firstId);
+    if (idx > 0) {
+      ids.splice(idx, 1);
+      ids.unshift(firstId);
+    }
+  }
+  return ids;
+}
+
+// True when `order` is a permutation of the current item ids (i.e. not stale
+// after items were added or removed).
+function isValidOrder(order: string[] | undefined, items: PlaylistItem[]): boolean {
+  if (!order || order.length !== items.length) return false;
+  const set = new Set(order);
+  if (set.size !== items.length) return false;
+  return items.every((it) => set.has(it.id));
+}
+
+// Advance/rewind through the shuffled order, rebuilding it if it has gone stale.
+// Keeps `items` untouched and only moves `activeItemIndex` (which points into
+// the original order) to the next shuffled item.
+function shuffleStep(p: Playlist, dir: 1 | -1): Playlist {
+  const currentId = p.items[p.activeItemIndex]?.id;
+  const order = isValidOrder(p.shuffleOrder, p.items)
+    ? p.shuffleOrder!
+    : shuffledIds(p.items, currentId);
+  const pos = currentId ? order.indexOf(currentId) : 0;
+  const nextId = order[(pos + dir + order.length) % order.length];
+  const nextIndex = p.items.findIndex((it) => it.id === nextId);
+  return {
+    ...p,
+    shuffleOrder: order,
+    activeItemIndex: nextIndex >= 0 ? nextIndex : p.activeItemIndex,
+  };
 }
 
 function arrayMove<T>(arr: T[], from: number, to: number): T[] {
@@ -137,6 +182,7 @@ export function reducer(state: AppState, action: Action): AppState {
       if (!state.activePlaylistId) return state;
       return updatePlaylist(state, state.activePlaylistId, (p) => {
         if (p.items.length === 0) return p;
+        if (state.shuffle) return shuffleStep(p, 1);
         return { ...p, activeItemIndex: (p.activeItemIndex + 1) % p.items.length };
       });
     }
@@ -145,6 +191,7 @@ export function reducer(state: AppState, action: Action): AppState {
       if (!state.activePlaylistId) return state;
       return updatePlaylist(state, state.activePlaylistId, (p) => {
         if (p.items.length === 0) return p;
+        if (state.shuffle) return shuffleStep(p, -1);
         return {
           ...p,
           activeItemIndex: (p.activeItemIndex - 1 + p.items.length) % p.items.length,
@@ -154,6 +201,34 @@ export function reducer(state: AppState, action: Action): AppState {
 
     case 'SET_PLAYING':
       return { ...state, isPlaying: action.isPlaying };
+
+    case 'SET_SHUFFLE': {
+      if (!action.shuffle) return { ...state, shuffle: false };
+      // Build a fresh order for the active playlist, anchored at the current
+      // item so playback continues from where it is rather than jumping.
+      const next = { ...state, shuffle: true };
+      if (!state.activePlaylistId) return next;
+      return updatePlaylist(next, state.activePlaylistId, (p) => ({
+        ...p,
+        shuffleOrder: shuffledIds(p.items, p.items[p.activeItemIndex]?.id),
+      }));
+    }
+
+    case 'SET_REPEAT':
+      return { ...state, repeat: action.repeat };
+
+    case 'AUTO_NEXT': {
+      if (!state.activePlaylistId) return state;
+      // 'one' replays the same video; the controller forces the reload, so the
+      // active index stays put here.
+      if (state.repeat === 'one') return state;
+      return updatePlaylist(state, state.activePlaylistId, (p) => {
+        if (p.items.length === 0) return p;
+        return state.shuffle
+          ? shuffleStep(p, 1)
+          : { ...p, activeItemIndex: (p.activeItemIndex + 1) % p.items.length };
+      });
+    }
 
     case 'SET_VOLUME':
       return updatePlaylist(state, action.playlistId, (p) => ({

@@ -14,7 +14,20 @@ export function RootLayout() {
   const activeItem = useActiveItem();
   const activePlaylist = useActivePlaylist();
   const dispatch = useDispatch();
-  const { activePlaylistId, isPlaying } = usePlaylists();
+  const { activePlaylistId, isPlaying, shuffle, repeat } = usePlaylists();
+  // The shuffle button cycles through three playback modes:
+  // normal (loop list in order) → shuffle → repeat-one → normal.
+  const playbackMode = shuffle ? 'shuffle' : repeat === 'one' ? 'one' : 'normal';
+  const cyclePlaybackMode = () => {
+    if (playbackMode === 'normal') {
+      dispatch({ type: 'SET_SHUFFLE', shuffle: true });
+    } else if (playbackMode === 'shuffle') {
+      dispatch({ type: 'SET_SHUFFLE', shuffle: false });
+      dispatch({ type: 'SET_REPEAT', repeat: 'one' });
+    } else {
+      dispatch({ type: 'SET_REPEAT', repeat: 'all' });
+    }
+  };
 
   const [isPip, setIsPip] = useState(false);
   const [isDocPipOpen, setIsDocPipOpen] = useState(false);
@@ -405,6 +418,35 @@ body.baronly #bar{top:0;opacity:1;background:#1a1a1a}
 
               {/* Transport buttons — left on mobile, centered on desktop */}
               <div className="flex items-center gap-1 sm:gap-2">
+                <button
+                  type="button"
+                  onClick={cyclePlaybackMode}
+                  aria-label="Playback mode"
+                  title={
+                    playbackMode === 'shuffle'
+                      ? 'Shuffle'
+                      : playbackMode === 'one'
+                        ? 'Repeat one'
+                        : 'Normal'
+                  }
+                  className={
+                    'rounded-full border-2 border-ink p-2 shadow-sketch-press transition-transform active:scale-95 ' +
+                    (playbackMode !== 'normal'
+                      ? 'bg-accent text-paper hover:opacity-90'
+                      : 'bg-paper text-ink hover:bg-sticky-yellow')
+                  }
+                >
+                  {playbackMode === 'one' ? (
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                      <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4zm-4-2V9h-1l-2 1v1h1.5v4H13z"/>
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                      <path d="M10.59 9.17 5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.66 6.83-1.42 1.42 3.38 3.38L15.08 18H20v-4.92l-2.04 2.04-2.8-2.79z"/>
+                    </svg>
+                  )}
+                </button>
+
                 <button
                   type="button"
                   onClick={controls.prev}

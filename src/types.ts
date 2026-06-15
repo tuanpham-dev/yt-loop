@@ -13,13 +13,22 @@ export interface Playlist {
   name: string;
   items: PlaylistItem[];
   activeItemIndex: number;
+  // Item ids in randomized playback order, used only while shuffle is on. The
+  // `items` array always stays in its original order; this is a separate view.
+  shuffleOrder?: string[];
 }
+
+// 'all'  — loop the whole playlist (wraps at the end).
+// 'one'  — repeat the current video.
+export type RepeatMode = 'all' | 'one';
 
 export interface AppState {
   version: number;
   playlists: Playlist[];
   activePlaylistId: string | null;
   isPlaying: boolean;
+  shuffle: boolean;
+  repeat: RepeatMode;
 }
 
 export type Action =
@@ -35,5 +44,9 @@ export type Action =
   | { type: 'NEXT' }
   | { type: 'PREV' }
   | { type: 'SET_PLAYING'; isPlaying: boolean }
+  | { type: 'SET_SHUFFLE'; shuffle: boolean }
+  | { type: 'SET_REPEAT'; repeat: RepeatMode }
+  // Natural end of a video (not a manual skip): advances per the repeat mode.
+  | { type: 'AUTO_NEXT' }
   | { type: 'SET_VOLUME'; playlistId: string; itemId: string; volume: number }
   | { type: 'IMPORT_PLAYLIST'; playlist: Playlist };

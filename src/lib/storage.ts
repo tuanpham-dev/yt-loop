@@ -8,6 +8,8 @@ export const initialState: AppState = {
   playlists: [],
   activePlaylistId: null,
   isPlaying: false,
+  shuffle: false,
+  repeat: 'all',
 };
 
 export function loadState(): AppState {
