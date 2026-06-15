@@ -110,6 +110,9 @@ body{position:relative}
 #player{position:absolute;inset:0;width:100%;height:100%;border:none;display:block}
 #bar{position:absolute;left:0;right:0;bottom:0;z-index:2;display:flex;align-items:center;gap:5px;padding:6px 8px;background:linear-gradient(to top,rgba(0,0,0,.78),rgba(0,0,0,0));opacity:0;transition:opacity .15s}
 body:hover #bar{opacity:1}
+/* Toolbar-only mode: the bar fills the (short) window with a solid background,
+   covering the video. The player stays mounted so audio keeps playing. */
+body.baronly #bar{top:0;opacity:1;background:#1a1a1a}
 #ttl{flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-family:sans-serif;font-size:12px;font-weight:bold;color:#fff;text-shadow:0 1px 2px #000}
 .btn{background:rgba(253,251,247,.94);color:#2d2d2d;border:2px solid #2d2d2d;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:13px;line-height:1.3}
 .btn:hover{background:#fff9c4}
@@ -122,18 +125,35 @@ body:hover #bar{opacity:1}
   <button class="btn" id="pv">⏮</button>
   <button class="btn" id="pp">⏸</button>
   <button class="btn" id="nx">⏭</button>
+  <button class="btn" id="tb" title="Toolbar only">▬</button>
 </div>
 <script>
 (function(){
-  var player=null,playing=true,ORIGIN='${rawOrigin}',
+  var player=null,playing=true,toolbarOnly=false,BAR_H=44,ORIGIN='${rawOrigin}',
       INITIAL_VIDEO='${videoId}',INITIAL_START=${startSec},
-      pp=document.getElementById('pp'),ttl=document.getElementById('ttl');
+      pp=document.getElementById('pp'),ttl=document.getElementById('ttl'),
+      tb=document.getElementById('tb');
 
   function toOpener(t){if(window.opener)window.opener.postMessage({type:t},'*');}
 
   document.getElementById('pv').onclick=function(){toOpener('pip:prev');};
   document.getElementById('nx').onclick=function(){toOpener('pip:next');};
   pp.onclick=function(){if(!player)return;if(playing)player.pauseVideo();else player.playVideo();};
+  // Toggle between the full 16:9 video window and a compact toolbar-only window
+  // (video hidden behind the bar, audio still playing). The click is a user
+  // gesture, so resizeTo is allowed here.
+  tb.onclick=function(){
+    toolbarOnly=!toolbarOnly;
+    document.body.classList.toggle('baronly',toolbarOnly);
+    // Note: Chrome ignores window.moveTo() for Document PiP windows (only the
+    // user can move them), so the collapse happens in place — we can resize but
+    // not reposition the window programmatically.
+    var dw=window.outerWidth-window.innerWidth,dh=window.outerHeight-window.innerHeight,iw=window.innerWidth;
+    try{
+      if(toolbarOnly){window.resizeTo(iw+dw,BAR_H+dh);tb.textContent='⛶';tb.title='Show video';}
+      else{window.resizeTo(iw+dw,Math.round(iw*9/16)+dh);tb.textContent='▬';tb.title='Toolbar only';}
+    }catch(e){}
+  };
 
   window.onYouTubeIframeAPIReady=function(){
     player=new YT.Player('player',{
@@ -160,7 +180,7 @@ body:hover #bar{opacity:1}
   // the window is already correct when playback starts, so Chrome never moves it.
   var relocking=false;
   function lockAspect(){
-    if(relocking)return;
+    if(relocking||toolbarOnly)return;
     var iw=window.innerWidth,targetH=Math.round(iw*9/16);
     if(Math.abs(window.innerHeight-targetH)>2){
       relocking=true;
