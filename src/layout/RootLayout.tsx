@@ -76,9 +76,13 @@ export function RootLayout() {
 
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // 16:9 exactly (480x270): the window matches the video's aspect ratio so
+      // Chrome doesn't resize/reposition it when playback starts. Controls are
+      // overlaid on the video (see styles below) rather than in a separate strip,
+      // which would make the window taller than 16:9 and trigger that resize.
       const pipWin: Window = await (window as any).documentPictureInPicture.requestWindow({
         width: 480,
-        height: 314,
+        height: 270,
       });
       docPipWinRef.current = pipWin;
       setIsDocPipOpen(true);
@@ -99,11 +103,15 @@ export function RootLayout() {
 <html><head><meta charset="utf-8">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-html,body{height:100%;background:#000;overflow:hidden;display:flex;flex-direction:column}
-#player{flex:1;width:100%;border:none;display:block}
-#bar{background:#fdfbf7;display:flex;align-items:center;gap:5px;padding:5px 8px;border-top:2px solid #2d2d2d;flex-shrink:0}
-#ttl{flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-family:sans-serif;font-size:12px;font-weight:bold;color:#2d2d2d}
-.btn{background:#fdfbf7;color:#2d2d2d;border:2px solid #2d2d2d;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:13px;line-height:1.3}
+html,body{height:100%;background:#000;overflow:hidden}
+body{position:relative}
+/* Video fills the whole 16:9 window; controls overlay on top so the window
+   stays exactly 16:9 and Chrome won't resize/move it when playback starts. */
+#player{position:absolute;inset:0;width:100%;height:100%;border:none;display:block}
+#bar{position:absolute;left:0;right:0;bottom:0;z-index:2;display:flex;align-items:center;gap:5px;padding:6px 8px;background:linear-gradient(to top,rgba(0,0,0,.78),rgba(0,0,0,0));opacity:0;transition:opacity .15s}
+body:hover #bar{opacity:1}
+#ttl{flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-family:sans-serif;font-size:12px;font-weight:bold;color:#fff;text-shadow:0 1px 2px #000}
+.btn{background:rgba(253,251,247,.94);color:#2d2d2d;border:2px solid #2d2d2d;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:13px;line-height:1.3}
 .btn:hover{background:#fff9c4}
 #pp{background:#ff4d4d;color:#fff;border-color:#2d2d2d}
 #pp:hover{background:#ff6b6b}
@@ -145,6 +153,25 @@ html,body{height:100%;background:#000;overflow:hidden;display:flex;flex-directio
   var s=document.createElement('script');
   s.src='https://www.youtube.com/iframe_api';
   document.head.appendChild(s);
+
+  // Keep the window locked to 16:9 as the user resizes. Chrome snaps a Document
+  // PiP window to the playing video's aspect ratio (~1s after play), repositioning
+  // it — very visible after a manual resize. Pre-snapping to 16:9 ourselves means
+  // the window is already correct when playback starts, so Chrome never moves it.
+  var relocking=false;
+  function lockAspect(){
+    if(relocking)return;
+    var iw=window.innerWidth,targetH=Math.round(iw*9/16);
+    if(Math.abs(window.innerHeight-targetH)>2){
+      relocking=true;
+      // resizeTo needs user activation in a PiP window — present during a user
+      // drag-resize (where we want this), absent for Chrome's own snap (where the
+      // aspect is already correct, so the throw is harmless).
+      try{window.resizeTo(iw+(window.outerWidth-window.innerWidth),targetH+(window.outerHeight-window.innerHeight));}catch(e){}
+      setTimeout(function(){relocking=false;},60);
+    }
+  }
+  window.addEventListener('resize',lockAspect);
 
   // Report position so the opener can resume the main player at the right spot on close.
   setInterval(function(){
