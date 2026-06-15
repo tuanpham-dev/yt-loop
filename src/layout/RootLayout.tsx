@@ -92,6 +92,7 @@ export function RootLayout() {
         .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
       const rawOrigin = window.location.origin;
       const videoId = activeItem.videoId;
+      const vol = activeItem.volume;
 
       // Drive the PiP player with the official YouTube IFrame API instead of a
       // hand-rolled postMessage handshake. The official API reliably establishes
@@ -129,7 +130,7 @@ body.baronly #bar{top:0;opacity:1;background:#1a1a1a}
 </div>
 <script>
 (function(){
-  var player=null,playing=true,toolbarOnly=false,BAR_H=44,ORIGIN='${rawOrigin}',
+  var player=null,playing=true,toolbarOnly=false,BAR_H=44,VOL=${vol},ORIGIN='${rawOrigin}',
       INITIAL_VIDEO='${videoId}',INITIAL_START=${startSec},
       pp=document.getElementById('pp'),ttl=document.getElementById('ttl'),
       tb=document.getElementById('tb');
@@ -160,7 +161,7 @@ body.baronly #bar{top:0;opacity:1;background:#1a1a1a}
       width:'100%',height:'100%',videoId:INITIAL_VIDEO,
       playerVars:{autoplay:1,start:INITIAL_START,rel:0,playsinline:1,modestbranding:1,origin:ORIGIN},
       events:{
-        onReady:function(e){e.target.playVideo();},
+        onReady:function(e){e.target.setVolume(VOL);e.target.playVideo();},
         onStateChange:function(e){
           // 0=ENDED 1=PLAYING 2=PAUSED
           if(e.data===0){toOpener('pip:next');}
@@ -204,9 +205,15 @@ body.baronly #bar{top:0;opacity:1;background:#1a1a1a}
   window.addEventListener('message',function(e){
     if(!e.data||typeof e.data!=='object')return;
     if(e.data.type==='pip:load'&&player){
+      if(typeof e.data.volume==='number')VOL=e.data.volume;
       ttl.textContent=e.data.title||'';
       playing=true;pp.textContent='⏸';
       player.loadVideoById({videoId:e.data.videoId,startSeconds:e.data.startSec||0});
+      player.setVolume(VOL);
+    }
+    // Live volume changes from the main player's slider while PiP is open.
+    if(e.data.type==='pip:vol'&&player&&typeof e.data.volume==='number'){
+      VOL=e.data.volume;player.setVolume(VOL);
     }
   });
 })();
@@ -248,12 +255,19 @@ body.baronly #bar{top:0;opacity:1;background:#1a1a1a}
   useEffect(() => {
     if (!activeItem || !docPipWinRef.current) return;
     docPipWinRef.current.postMessage(
-      { type: 'pip:load', videoId: activeItem.videoId, startSec: 0, title: activeItem.title },
+      { type: 'pip:load', videoId: activeItem.videoId, startSec: 0, title: activeItem.title, volume: activeItem.volume },
       '*',
     );
   // pipNavSeq triggers this even when activeItem.id is unchanged (single-item playlists).
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeItem?.id, pipNavSeq]);
+
+  // Keep the PiP player's volume in sync with the main player while PiP is open
+  // (e.g. when the user drags the volume slider).
+  useEffect(() => {
+    if (!isDocPipOpen || !docPipWinRef.current || !activeItem) return;
+    docPipWinRef.current.postMessage({ type: 'pip:vol', volume: activeItem.volume }, '*');
+  }, [isDocPipOpen, activeItem]);
 
   const expandPip = () => {
     pipLockedRef.current = true;

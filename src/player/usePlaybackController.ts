@@ -53,6 +53,10 @@ export function usePlaybackController(
 
   const loadedVideoRef = useRef<string | null>(null);
   const loadedItemIdRef = useRef<string | null>(null);
+  // The last volume we pushed to the player. Used to tell an app-driven change
+  // (which matches this) apart from a change made via the player's own volume
+  // control (which won't), so we can sync the latter back into app state.
+  const lastVolPushRef = useRef<number | null>(null);
   const activeItemRef = useRef<PlaylistItem | null>(activeItem);
 
   useEffect(() => {
@@ -93,6 +97,7 @@ export function usePlaybackController(
     } else {
       playerRef.current.setVolume(activeItem.volume);
     }
+    lastVolPushRef.current = activeItem.volume;
     // The resume position applies only to this first post-PiP load.
     if (pipResumeRef) pipResumeRef.current = null;
   }, [activeItem, isReady, playerRef, isDocPipOpen, loadSeq]);
@@ -126,9 +131,19 @@ export function usePlaybackController(
         setLoadSeq((n) => n + 1);
         dispatch({ type: 'NEXT' });
       }
+      // Sync volume changes made via the player's own volume control back into
+      // app state. lastVolPushRef matches whatever the app last pushed, so a
+      // difference means the user changed it on the player itself.
+      if (item && !isDocPipOpen && state.activePlaylistId && lastVolPushRef.current != null) {
+        const v = Math.round(player.getVolume());
+        if (v !== lastVolPushRef.current) {
+          lastVolPushRef.current = v;
+          dispatch({ type: 'SET_VOLUME', playlistId: state.activePlaylistId, itemId: item.id, volume: v });
+        }
+      }
     }, POLL_MS);
     return () => clearInterval(interval);
-  }, [isReady, state.isPlaying, dispatch, playerRef]);
+  }, [isReady, state.isPlaying, state.activePlaylistId, isDocPipOpen, dispatch, playerRef]);
 
   // Anchor the OS media session to this document so OS next/prev/play/pause
   // reach our handlers even when the browser is backgrounded. Disabled while a
