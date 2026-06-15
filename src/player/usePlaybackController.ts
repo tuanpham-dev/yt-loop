@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PlaylistItem } from '../types';
 import type { PlayerHandle } from './YouTubePlayer';
 import { useDispatch, usePlaylists, useActiveItem } from '../state/PlaylistsContext';
+import { useMediaSessionAnchor } from './useMediaSessionAnchor';
 
 const POLL_MS = 250;
 
@@ -122,6 +123,12 @@ export function usePlaybackController(
     }, POLL_MS);
     return () => clearInterval(interval);
   }, [isReady, state.isPlaying, dispatch, playerRef]);
+
+  // Anchor the OS media session to this document so OS next/prev/play/pause
+  // reach our handlers even when the browser is backgrounded. Disabled while a
+  // Document PiP window is open — that window plays YouTube and owns its own
+  // session, and main playback is paused anyway.
+  useMediaSessionAnchor(state.isPlaying && !!activeItem && !isDocPipOpen);
 
   // Media Session API — exposes OS-level media controls (lock screen, notification bar, etc.)
   useEffect(() => {
