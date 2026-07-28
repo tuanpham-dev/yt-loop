@@ -5,9 +5,12 @@ import { PlaylistsProvider } from './state/PlaylistsContext';
 import { App } from './App';
 import './index.css';
 
+// Served from a subpath on GitHub Pages (e.g. /yt-loop/), from "/" elsewhere.
+const basename = import.meta.env.BASE_URL.replace(/\/$/, '');
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter>
+    <BrowserRouter basename={basename}>
       <PlaylistsProvider>
         <App />
       </PlaylistsProvider>
