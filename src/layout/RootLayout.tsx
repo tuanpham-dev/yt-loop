@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom';
 import { YouTubePlayer, type PlayerHandle } from '../player/YouTubePlayer';
 import { RangeSlider } from '../player/RangeSlider';
 import { usePlaybackController } from '../player/usePlaybackController';
+import { getSilentUrl } from '../player/useMediaSessionAnchor';
 import { ErrorBanner } from '../ui/ErrorBanner';
 import { useActiveItem, useActivePlaylist, useDispatch, usePlaylists } from '../state/PlaylistsContext';
 import { TopBar } from './TopBar';
@@ -106,6 +107,7 @@ export function RootLayout() {
       const rawOrigin = window.location.origin;
       const videoId = activeItem.videoId;
       const vol = activeItem.volume;
+      const silentUrl = getSilentUrl();
 
       // Drive the PiP player with the official YouTube IFrame API instead of a
       // hand-rolled postMessage handshake. The official API reliably establishes
@@ -144,11 +146,38 @@ body.baronly #bar{top:0;opacity:1;background:#1a1a1a}
 <script>
 (function(){
   var player=null,playing=true,toolbarOnly=false,BAR_H=44,VOL=${vol},ORIGIN='${rawOrigin}',
-      INITIAL_VIDEO='${videoId}',INITIAL_START=${startSec},
+      INITIAL_VIDEO='${videoId}',INITIAL_START=${startSec},SILENT='${silentUrl}',
       pp=document.getElementById('pp'),ttl=document.getElementById('ttl'),
       tb=document.getElementById('tb');
 
-  function toOpener(t){if(window.opener)window.opener.postMessage({type:t},'*');}
+  function toOpener(t){if(window.opener)window.opener.postMessage({type:t},ORIGIN);}
+
+  // This window is its own browsing context with its own OS media session, so
+  // the opener's navigator.mediaSession handlers don't apply here. Register
+  // our own, and keep a silent <audio> playing in this top-level document so
+  // Chromium routes OS media keys / Now Playing to these handlers instead of
+  // the YouTube iframe (same trick as the main page's useMediaSessionAnchor).
+  var ms=('mediaSession' in navigator)?navigator.mediaSession:null,
+      anchor=new Audio(SILENT);
+  anchor.loop=true;
+  function syncAnchor(){
+    if(playing)anchor.play().catch(function(){});else anchor.pause();
+    if(ms)ms.playbackState=playing?'playing':'paused';
+  }
+  function setMeta(title){
+    if(ms&&window.MediaMetadata)ms.metadata=new MediaMetadata({title:title});
+  }
+  if(ms){
+    try{
+      ms.setActionHandler('nexttrack',function(){toOpener('pip:next');});
+      ms.setActionHandler('previoustrack',function(){toOpener('pip:prev');});
+      ms.setActionHandler('play',function(){if(player)player.playVideo();});
+      ms.setActionHandler('pause',function(){if(player)player.pauseVideo();});
+    }catch(e){}
+  }
+  setMeta(ttl.textContent);
+  // play() may be refused without a gesture in this window; retry on the first one.
+  document.addEventListener('pointerdown',syncAnchor,true);
 
   document.getElementById('pv').onclick=function(){toOpener('pip:prev');};
   document.getElementById('nx').onclick=function(){toOpener('pip:next');};
@@ -178,8 +207,8 @@ body.baronly #bar{top:0;opacity:1;background:#1a1a1a}
         onStateChange:function(e){
           // 0=ENDED 1=PLAYING 2=PAUSED
           if(e.data===0){toOpener('pip:next');}
-          else if(e.data===1){playing=true;pp.textContent='⏸';pp.title='Pause';}
-          else if(e.data===2){playing=false;pp.textContent='▶';pp.title='Play';}
+          else if(e.data===1){playing=true;pp.textContent='⏸';pp.title='Pause';syncAnchor();}
+          else if(e.data===2){playing=false;pp.textContent='▶';pp.title='Play';syncAnchor();}
         }
       }
     });
@@ -210,16 +239,17 @@ body.baronly #bar{top:0;opacity:1;background:#1a1a1a}
   // Report position so the opener can resume the main player at the right spot on close.
   setInterval(function(){
     if(player&&player.getCurrentTime&&window.opener){
-      window.opener.postMessage({type:'pip:time',t:player.getCurrentTime()},'*');
+      window.opener.postMessage({type:'pip:time',t:player.getCurrentTime()},ORIGIN);
     }
   },1000);
 
   // Opener pushes the next/prev video in here; loadVideoById autoplays it.
   window.addEventListener('message',function(e){
-    if(!e.data||typeof e.data!=='object')return;
+    if(e.source!==window.opener||!e.data||typeof e.data!=='object')return;
     if(e.data.type==='pip:load'&&player){
       if(typeof e.data.volume==='number')VOL=e.data.volume;
       ttl.textContent=e.data.title||'';
+      setMeta(ttl.textContent);
       playing=true;pp.textContent='⏸';pp.title='Pause';
       player.loadVideoById({videoId:e.data.videoId,startSeconds:e.data.startSec||0});
       player.setVolume(VOL);
@@ -269,7 +299,7 @@ body.baronly #bar{top:0;opacity:1;background:#1a1a1a}
     if (!activeItem || !docPipWinRef.current) return;
     docPipWinRef.current.postMessage(
       { type: 'pip:load', videoId: activeItem.videoId, startSec: 0, title: activeItem.title, volume: activeItem.volume },
-      '*',
+      window.location.origin,
     );
   // pipNavSeq triggers this even when activeItem.id is unchanged (single-item playlists).
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -279,7 +309,7 @@ body.baronly #bar{top:0;opacity:1;background:#1a1a1a}
   // (e.g. when the user drags the volume slider).
   useEffect(() => {
     if (!isDocPipOpen || !docPipWinRef.current || !activeItem) return;
-    docPipWinRef.current.postMessage({ type: 'pip:vol', volume: activeItem.volume }, '*');
+    docPipWinRef.current.postMessage({ type: 'pip:vol', volume: activeItem.volume }, window.location.origin);
   }, [isDocPipOpen, activeItem]);
 
   const expandPip = () => {

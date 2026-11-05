@@ -63,6 +63,12 @@ export function usePlaybackController(
     activeItemRef.current = activeItem;
   }, [activeItem]);
 
+  // Read by the player's onStateChange, which is a stable callback.
+  const isPlayingRef = useRef(state.isPlaying);
+  isPlayingRef.current = state.isPlaying;
+  const isDocPipOpenRef = useRef(isDocPipOpen);
+  isDocPipOpenRef.current = isDocPipOpen;
+
   const onReady = useCallback(() => setIsReady(true), []);
   const onError = useCallback((code: number) => {
     setError(YT_ERROR_MESSAGES[code] ?? `Playback error (code ${code}).`);
@@ -75,6 +81,19 @@ export function usePlaybackController(
       if (s === 0) {
         setLoadSeq((n) => n + 1);
         dispatch({ type: 'AUTO_NEXT' });
+        return;
+      }
+      // 1 = PLAYING, 2 = PAUSED. Mirror changes that didn't come from the app:
+      // clicks inside the YouTube iframe, the OS Now Playing / media keys
+      // (which WebKit routes to the iframe), or the host pausing all media
+      // (e.g. Sidekick's "Pause Media When Hidden"). While Document PiP is open
+      // the main player is deliberately paused, so ignore it then.
+      if ((s === 1 || s === 2) && !isDocPipOpenRef.current) {
+        const playing = s === 1;
+        if (playing !== isPlayingRef.current) {
+          isPlayingRef.current = playing;
+          dispatch({ type: 'SET_PLAYING', isPlaying: playing });
+        }
       }
     },
     [dispatch],

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 
 /**
- * Builds a short, all-silent PCM WAV file as a data URI.
+ * Builds a short, all-silent PCM WAV file and returns it as a Blob URL.
  *
  * The actual video audio lives inside the cross-origin YouTube <iframe>, which
  * means the YouTube frame owns the OS-level Media Session. As a result the
@@ -10,12 +10,19 @@ import { useEffect, useRef } from 'react';
  * visibly when the browser window is not focused.
  *
  * Playing a real (but silent) <audio> element in the top-level document makes
- * THIS document a media producer, so the browser routes the OS media controls
- * to our action handlers. The track is genuinely silent, so it never interferes
- * with the YouTube audio the user actually hears.
+ * THIS document a media producer, so Chromium routes the OS media controls to
+ * our action handlers (it prefers the top-most frame that has a player). The
+ * track is genuinely silent, so it never interferes with the YouTube audio.
+ *
+ * WebKit (Safari, WKWebView) does NOT honour this: it gives Now Playing to the
+ * largest visible <video>, i.e. the one inside the YouTube iframe, so OS
+ * next/prev can't reach this page there.
+ *
+ * The clip is 10 s long: Chromium classifies media of 5 s or less as a
+ * "transient" sound, and WebKit ignores audio under ~1 s for Now Playing.
  */
-function buildSilentWavDataUri(seconds = 1): string {
-  const sampleRate = 8000; // low rate keeps the data URI tiny — silence has no detail to lose
+export function buildSilentWavUrl(seconds = 10): string {
+  const sampleRate = 8000; // low rate keeps the file small — silence has no detail to lose
   const numSamples = sampleRate * seconds;
   const bytesPerSample = 2; // 16-bit
   const dataSize = numSamples * bytesPerSample;
@@ -39,15 +46,17 @@ function buildSilentWavDataUri(seconds = 1): string {
   view.setUint16(34, 16, true); // bits per sample
   writeStr(36, 'data');
   view.setUint32(40, dataSize, true);
-  // Sample region is left as zeros == silence.
+  // Sample region is left as zeros == silence (16-bit PCM is signed).
 
-  let binary = '';
-  const bytes = new Uint8Array(buffer);
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-  return `data:audio/wav;base64,${btoa(binary)}`;
+  return URL.createObjectURL(new Blob([buffer], { type: 'audio/wav' }));
 }
 
-const SILENT_SRC = buildSilentWavDataUri();
+let silentUrl: string | null = null;
+/** Lazily built and shared for the page's lifetime (also used by the PiP window). */
+export function getSilentUrl(): string {
+  if (!silentUrl) silentUrl = buildSilentWavUrl();
+  return silentUrl;
+}
 
 /**
  * Keeps a silent looping <audio> element playing in the top-level document so
@@ -59,9 +68,11 @@ const SILENT_SRC = buildSilentWavDataUri();
  */
 export function useMediaSessionAnchor(active: boolean): void {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const activeRef = useRef(active);
+  activeRef.current = active;
 
   useEffect(() => {
-    const audio = new Audio(SILENT_SRC);
+    const audio = new Audio(getSilentUrl());
     audio.loop = true;
     audio.preload = 'auto';
     // A non-zero volume is required for some browsers to treat it as a real
@@ -79,13 +90,26 @@ export function useMediaSessionAnchor(active: boolean): void {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    if (active) {
-      // play() may reject if no user gesture has occurred yet; the first real
-      // play is always triggered by the on-screen play button (a gesture), so
-      // this resolves from then on.
-      void audio.play().catch(() => {});
-    } else {
+    if (!active) {
       audio.pause();
+      return;
     }
+    // play() rejects without a user gesture — e.g. after a reload restored
+    // isPlaying, or when playback was started by clicking inside the YouTube
+    // iframe. Retry on the next click / key press in this document.
+    let retry: (() => void) | null = null;
+    audio.play().catch(() => {
+      retry = () => {
+        if (activeRef.current && audio.paused) void audio.play().catch(() => {});
+      };
+      document.addEventListener('pointerdown', retry, { once: true, capture: true });
+      document.addEventListener('keydown', retry, { once: true, capture: true });
+    });
+    return () => {
+      if (retry) {
+        document.removeEventListener('pointerdown', retry, { capture: true });
+        document.removeEventListener('keydown', retry, { capture: true });
+      }
+    };
   }, [active]);
 }
