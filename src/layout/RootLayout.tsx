@@ -50,14 +50,20 @@ export function RootLayout() {
   const pipResumeRef = useRef<number | null>(null);
   const controls = usePlaybackController(playerRef, isDocPipOpen, pipResumeRef);
   const playerContainerRef = useRef<HTMLDivElement>(null);
+  // Player + controls panel. Scroll-PiP keys off this whole zone leaving the
+  // viewport, and the zone keeps the same height in and out of PiP.
+  const pipZoneRef = useRef<HTMLDivElement>(null);
   const docPipWinRef = useRef<Window | null>(null);
   // Prevents the observer from re-activating scroll-PiP while scrolling back to the player.
   const pipLockedRef = useRef(false);
   const activeItemRef = useRef(activeItem);
   useEffect(() => { activeItemRef.current = activeItem; }, [activeItem]);
 
+  // Toggling PiP must never change the page height: if it did, near the
+  // bottom of the page the browser would clamp the scroll position, bring the
+  // player back into view, exit PiP, restore the height, and loop forever.
   useEffect(() => {
-    const el = playerContainerRef.current;
+    const el = pipZoneRef.current;
     if (!el) return;
     const observer = new IntersectionObserver(
       ([entry]) => {
@@ -365,231 +371,239 @@ body.baronly #bar{top:0;opacity:1;background:#1a1a1a}
       <TopBar />
 
       <div className="mx-auto w-full max-w-5xl px-4 pt-4">
-        <div
-          ref={playerContainerRef}
-          className={activeItem ? 'block' : 'sr-only'}
-          aria-hidden={!activeItem}
-        >
-          {/* Spacer: preserves layout height while player is fixed in PiP */}
-          {isPip && <div className="aspect-video w-full" aria-hidden />}
-
+        <div ref={pipZoneRef}>
           <div
-            className={
-              isPip
-                ? 'fixed bottom-4 right-4 z-50 w-72 overflow-hidden rounded-sketch border-[3px] border-ink bg-ink shadow-[6px_6px_0_0_rgba(45,45,45,0.45)] [transform:translateZ(0)]'
-                : 'overflow-hidden rounded-sketch border-[3px] border-ink bg-ink shadow-sketch'
-            }
+            ref={playerContainerRef}
+            className={activeItem ? 'block' : 'sr-only'}
+            aria-hidden={!activeItem}
           >
-            <YouTubePlayer ref={playerRef} {...controls.playerHandlers} />
-
-            {isPip && activeItem && (
-              <div className="flex items-center gap-1.5 bg-paper px-2 py-1.5">
-                <span className="min-w-0 flex-1 truncate font-hand text-xs font-bold text-ink">
-                  {activeItem.title}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => dispatch({ type: 'PREV' })}
-                  aria-label="Previous"
-                  title="Previous"
-                  className="rounded border-2 border-ink px-1.5 py-0.5 font-hand text-sm leading-none hover:bg-sticky-yellow"
-                >
-                  {'<'}
-                </button>
-                <button
-                  type="button"
-                  onClick={controls.togglePlay}
-                  aria-label={isPlaying ? 'Pause' : 'Play'}
-                  title={isPlaying ? 'Pause' : 'Play'}
-                  className="rounded border-2 border-ink bg-accent px-2 py-0.5 font-hand text-sm font-bold leading-none text-paper hover:opacity-90"
-                >
-                  {isPlaying ? '❚❚' : '▶'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => dispatch({ type: 'NEXT' })}
-                  aria-label="Next"
-                  title="Next"
-                  className="rounded border-2 border-ink px-1.5 py-0.5 font-hand text-sm leading-none hover:bg-sticky-yellow"
-                >
-                  {'>'}
-                </button>
-                <button
-                  type="button"
-                  onClick={expandPip}
-                  aria-label="Expand player"
-                  title="Back to player"
-                  className="rounded border-2 border-ink px-1.5 py-0.5 font-hand text-sm leading-none hover:bg-sticky-green"
-                >
-                  ↗
-                </button>
+            {/* Spacer: same box as the docked player (incl. its 3px border) so the
+                layout height doesn't change while the player is fixed in PiP. */}
+            {isPip && (
+              <div className="border-[3px] border-transparent" aria-hidden>
+                <div className="aspect-video w-full" />
               </div>
             )}
-          </div>
-        </div>
 
-        {activeItem && !isPip ? (
-          <div className="mt-4 select-none overflow-hidden rounded-sketch-sm border-[3px] border-ink bg-paper-50 shadow-sketch-sm">
-            <RangeSlider
-              startSec={activeItem.startSec}
-              endSec={activeItem.endSec}
-              duration={controls.duration}
-              currentTime={controls.currentTime}
-              onChangeStart={onChangeStart}
-              onChangeEnd={onChangeEnd}
-              onCommitStart={onCommitStart}
-            />
+            <div
+              className={
+                isPip
+                  ? 'fixed bottom-4 right-4 z-50 w-72 overflow-hidden rounded-sketch border-[3px] border-ink bg-ink shadow-[6px_6px_0_0_rgba(45,45,45,0.45)] [transform:translateZ(0)]'
+                  : 'overflow-hidden rounded-sketch border-[3px] border-ink bg-ink shadow-sketch'
+              }
+            >
+              <YouTubePlayer ref={playerRef} {...controls.playerHandlers} />
 
-            {/* Player controls row */}
-            <div className="flex items-center justify-between bg-paper px-4 py-3 sm:grid sm:grid-cols-[1fr_auto_1fr]">
-              {/* Left spacer — desktop only, balances the right volume group */}
-              <div className="hidden sm:block">
-                {controls.duration <= 0 && (
-                  <span className="font-hand text-xs text-ink-soft">Waiting for duration…</span>
-                )}
-              </div>
-
-              {/* Transport buttons — left on mobile, centered on desktop */}
-              <div className="flex items-center gap-1 sm:gap-2">
-                <button
-                  type="button"
-                  onClick={cyclePlaybackMode}
-                  aria-label="Playback mode"
-                  title={
-                    playbackMode === 'shuffle'
-                      ? 'Shuffle'
-                      : playbackMode === 'one'
-                        ? 'Repeat one'
-                        : 'Normal'
-                  }
-                  className={
-                    'rounded-full border-2 border-ink p-2 shadow-sketch-press transition-transform active:scale-95 ' +
-                    (playbackMode !== 'normal'
-                      ? 'bg-accent text-paper hover:opacity-90'
-                      : 'bg-paper text-ink hover:bg-sticky-yellow')
-                  }
-                >
-                  {playbackMode === 'one' ? (
-                    <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
-                      <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4zm-4-2V9h-1l-2 1v1h1.5v4H13z"/>
-                    </svg>
-                  ) : (
-                    <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
-                      <path d="M10.59 9.17 5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.66 6.83-1.42 1.42 3.38 3.38L15.08 18H20v-4.92l-2.04 2.04-2.8-2.79z"/>
-                    </svg>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={controls.prev}
-                  aria-label="Previous"
-                  title="Previous"
-                  className="rounded-full border-2 border-ink bg-paper p-2 text-ink shadow-sketch-press transition-transform hover:bg-sticky-yellow active:scale-95"
-                >
-                  <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
-                    <path d="M6 6h2v12H6V6zm3.5 6L18 18V6L9.5 12z"/>
-                  </svg>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={controls.togglePlay}
-                  aria-label={isPlaying ? 'Pause' : 'Play'}
-                  title={isPlaying ? 'Pause' : 'Play'}
-                  className="mx-1 flex h-11 w-11 items-center justify-center rounded-full border-2 border-ink bg-accent text-paper shadow-sketch-sm transition-all hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-sketch-press active:scale-95 active:shadow-none"
-                >
-                  {isPlaying ? (
-                    <svg viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6">
-                      <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-                    </svg>
-                  ) : (
-                    <svg viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6 translate-x-[1px]">
-                      <path d="M8 5v14l11-7z"/>
-                    </svg>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={controls.next}
-                  aria-label="Next"
-                  title="Next"
-                  className="rounded-full border-2 border-ink bg-paper p-2 text-ink shadow-sketch-press transition-transform hover:bg-sticky-yellow active:scale-95"
-                >
-                  <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
-                    <path d="M6 6v12l8.5-6zM16.5 6h2v12h-2z"/>
-                  </svg>
-                </button>
-              </div>
-
-              {/* Right: mute + volume slider + pip */}
-              <div className="flex items-center justify-end gap-2">
-                {/* Mute toggle */}
-                <button
-                  type="button"
-                  onClick={toggleMute}
-                  aria-label={isMuted ? 'Unmute' : 'Mute'}
-                  title={isMuted ? 'Unmute' : 'Mute'}
-                  className="rounded-full border-2 border-ink bg-paper p-2 text-ink shadow-sketch-press transition-transform hover:bg-sticky-yellow active:scale-95"
-                >
-                  {isMuted ? (
-                    <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
-                      <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
-                    </svg>
-                  ) : (
-                    <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
-                      <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
-                    </svg>
-                  )}
-                </button>
-
-                {/* Volume slider */}
-                <div className="relative h-9 w-20 sm:w-24">
-                  <div className="absolute inset-x-0 top-1/2 h-2 -translate-y-1/2 rounded-full border-2 border-ink bg-paper" />
-                  <div
-                    className="absolute top-1/2 h-2 -translate-y-1/2 rounded-l-full border-y-2 border-l-2 border-ink bg-accent/60"
-                    style={{ width: `${activeItem.volume}%` }}
-                  />
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={activeItem.volume}
-                    onChange={(e) => {
-                      if (!activePlaylistId) return;
-                      if (isMuted) setIsMuted(false);
-                      dispatch({
-                        type: 'SET_VOLUME',
-                        playlistId: activePlaylistId,
-                        itemId: activeItem.id,
-                        volume: parseInt(e.target.value, 10),
-                      });
-                    }}
-                    className="vol-thumb absolute inset-0 m-0 w-full"
-                    aria-label="Volume for current video"
-                    title="Drag to set the volume for the current video"
-                  />
-                </div>
-
-                {/* PiP */}
-                {supportsDocPip && !isDocPipOpen && (
+              {isPip && activeItem && (
+                <div className="flex items-center gap-1.5 bg-paper px-2 py-1.5">
+                  <span className="min-w-0 flex-1 truncate font-hand text-xs font-bold text-ink">
+                    {activeItem.title}
+                  </span>
                   <button
                     type="button"
-                    onClick={openDocPip}
-                    aria-label="Open picture-in-picture"
-                    title="Picture-in-picture"
-                    className="hidden rounded-full border-2 border-ink bg-paper p-2 text-ink shadow-sketch-press transition-transform hover:bg-sticky-yellow active:scale-95 md:block"
+                    onClick={() => dispatch({ type: 'PREV' })}
+                    aria-label="Previous"
+                    title="Previous"
+                    className="rounded border-2 border-ink px-1.5 py-0.5 font-hand text-sm leading-none hover:bg-sticky-yellow"
                   >
-                    <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
-                      <path d="M19 7h-8v6h8V7zm2-4H3C1.9 3 1 3.9 1 5v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14z"/>
-                    </svg>
+                    {'<'}
                   </button>
-                )}
-              </div>
+                  <button
+                    type="button"
+                    onClick={controls.togglePlay}
+                    aria-label={isPlaying ? 'Pause' : 'Play'}
+                    title={isPlaying ? 'Pause' : 'Play'}
+                    className="rounded border-2 border-ink bg-accent px-2 py-0.5 font-hand text-sm font-bold leading-none text-paper hover:opacity-90"
+                  >
+                    {isPlaying ? '❚❚' : '▶'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => dispatch({ type: 'NEXT' })}
+                    aria-label="Next"
+                    title="Next"
+                    className="rounded border-2 border-ink px-1.5 py-0.5 font-hand text-sm leading-none hover:bg-sticky-yellow"
+                  >
+                    {'>'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={expandPip}
+                    aria-label="Expand player"
+                    title="Back to player"
+                    className="rounded border-2 border-ink px-1.5 py-0.5 font-hand text-sm leading-none hover:bg-sticky-green"
+                  >
+                    ↗
+                  </button>
+                </div>
+              )}
             </div>
           </div>
-        ) : null}
+
+          {/* Kept mounted in PiP (it is off screen then) so the height is stable. */}
+          {activeItem ? (
+            <div className="mt-4 select-none overflow-hidden rounded-sketch-sm border-[3px] border-ink bg-paper-50 shadow-sketch-sm">
+              <RangeSlider
+                startSec={activeItem.startSec}
+                endSec={activeItem.endSec}
+                duration={controls.duration}
+                currentTime={controls.currentTime}
+                onChangeStart={onChangeStart}
+                onChangeEnd={onChangeEnd}
+                onCommitStart={onCommitStart}
+              />
+
+              {/* Player controls row */}
+              <div className="flex items-center justify-between bg-paper px-4 py-3 sm:grid sm:grid-cols-[1fr_auto_1fr]">
+                {/* Left spacer — desktop only, balances the right volume group */}
+                <div className="hidden sm:block">
+                  {controls.duration <= 0 && (
+                    <span className="font-hand text-xs text-ink-soft">Waiting for duration…</span>
+                  )}
+                </div>
+
+                {/* Transport buttons — left on mobile, centered on desktop */}
+                <div className="flex items-center gap-1 sm:gap-2">
+                  <button
+                    type="button"
+                    onClick={cyclePlaybackMode}
+                    aria-label="Playback mode"
+                    title={
+                      playbackMode === 'shuffle'
+                        ? 'Shuffle'
+                        : playbackMode === 'one'
+                          ? 'Repeat one'
+                          : 'Normal'
+                    }
+                    className={
+                      'rounded-full border-2 border-ink p-2 shadow-sketch-press transition-transform active:scale-95 ' +
+                      (playbackMode !== 'normal'
+                        ? 'bg-accent text-paper hover:opacity-90'
+                        : 'bg-paper text-ink hover:bg-sticky-yellow')
+                    }
+                  >
+                    {playbackMode === 'one' ? (
+                      <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                        <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4zm-4-2V9h-1l-2 1v1h1.5v4H13z"/>
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                        <path d="M10.59 9.17 5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.66 6.83-1.42 1.42 3.38 3.38L15.08 18H20v-4.92l-2.04 2.04-2.8-2.79z"/>
+                      </svg>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={controls.prev}
+                    aria-label="Previous"
+                    title="Previous"
+                    className="rounded-full border-2 border-ink bg-paper p-2 text-ink shadow-sketch-press transition-transform hover:bg-sticky-yellow active:scale-95"
+                  >
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                      <path d="M6 6h2v12H6V6zm3.5 6L18 18V6L9.5 12z"/>
+                    </svg>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={controls.togglePlay}
+                    aria-label={isPlaying ? 'Pause' : 'Play'}
+                    title={isPlaying ? 'Pause' : 'Play'}
+                    className="mx-1 flex h-11 w-11 items-center justify-center rounded-full border-2 border-ink bg-accent text-paper shadow-sketch-sm transition-all hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-sketch-press active:scale-95 active:shadow-none"
+                  >
+                    {isPlaying ? (
+                      <svg viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6">
+                        <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6 translate-x-[1px]">
+                        <path d="M8 5v14l11-7z"/>
+                      </svg>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={controls.next}
+                    aria-label="Next"
+                    title="Next"
+                    className="rounded-full border-2 border-ink bg-paper p-2 text-ink shadow-sketch-press transition-transform hover:bg-sticky-yellow active:scale-95"
+                  >
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                      <path d="M6 6v12l8.5-6zM16.5 6h2v12h-2z"/>
+                    </svg>
+                  </button>
+                </div>
+
+                {/* Right: mute + volume slider + pip */}
+                <div className="flex items-center justify-end gap-2">
+                  {/* Mute toggle */}
+                  <button
+                    type="button"
+                    onClick={toggleMute}
+                    aria-label={isMuted ? 'Unmute' : 'Mute'}
+                    title={isMuted ? 'Unmute' : 'Mute'}
+                    className="rounded-full border-2 border-ink bg-paper p-2 text-ink shadow-sketch-press transition-transform hover:bg-sticky-yellow active:scale-95"
+                  >
+                    {isMuted ? (
+                      <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                        <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                        <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+                      </svg>
+                    )}
+                  </button>
+
+                  {/* Volume slider */}
+                  <div className="relative h-9 w-20 sm:w-24">
+                    <div className="absolute inset-x-0 top-1/2 h-2 -translate-y-1/2 rounded-full border-2 border-ink bg-paper" />
+                    <div
+                      className="absolute top-1/2 h-2 -translate-y-1/2 rounded-l-full border-y-2 border-l-2 border-ink bg-accent/60"
+                      style={{ width: `${activeItem.volume}%` }}
+                    />
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={activeItem.volume}
+                      onChange={(e) => {
+                        if (!activePlaylistId) return;
+                        if (isMuted) setIsMuted(false);
+                        dispatch({
+                          type: 'SET_VOLUME',
+                          playlistId: activePlaylistId,
+                          itemId: activeItem.id,
+                          volume: parseInt(e.target.value, 10),
+                        });
+                      }}
+                      className="vol-thumb absolute inset-0 m-0 w-full"
+                      aria-label="Volume for current video"
+                      title="Drag to set the volume for the current video"
+                    />
+                  </div>
+
+                  {/* PiP */}
+                  {supportsDocPip && !isDocPipOpen && (
+                    <button
+                      type="button"
+                      onClick={openDocPip}
+                      aria-label="Open picture-in-picture"
+                      title="Picture-in-picture"
+                      className="hidden rounded-full border-2 border-ink bg-paper p-2 text-ink shadow-sketch-press transition-transform hover:bg-sticky-yellow active:scale-95 md:block"
+                    >
+                      <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                        <path d="M19 7h-8v6h8V7zm2-4H3C1.9 3 1 3.9 1 5v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14z"/>
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
 
         {controls.error ? (
           <div className="mt-3">
