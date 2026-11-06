@@ -68,6 +68,10 @@ export function usePlaybackController(
   isPlayingRef.current = state.isPlaying;
   const isDocPipOpenRef = useRef(isDocPipOpen);
   isDocPipOpenRef.current = isDocPipOpen;
+  // True from loadVideo() until the new video reports UNSTARTED (-1).
+  // loadVideoById() first fires PAUSED for the outgoing video; that must not
+  // be mirrored into app state or the new video would be paused on arrival.
+  const switchingVideoRef = useRef(false);
 
   const onReady = useCallback(() => setIsReady(true), []);
   const onError = useCallback((code: number) => {
@@ -88,6 +92,8 @@ export function usePlaybackController(
       // (which WebKit routes to the iframe), or the host pausing all media
       // (e.g. Sidekick's "Pause Media When Hidden"). While Document PiP is open
       // the main player is deliberately paused, so ignore it then.
+      if (s === -1 || s === 1) switchingVideoRef.current = false;
+      if (s === 2 && switchingVideoRef.current) return;
       if ((s === 1 || s === 2) && !isDocPipOpenRef.current) {
         const playing = s === 1;
         if (playing !== isPlayingRef.current) {
@@ -112,6 +118,7 @@ export function usePlaybackController(
       setError(null);
       const startAt = pipResumeRef?.current ?? activeItem.startSec;
       playerRef.current.setVolume(activeItem.volume);
+      switchingVideoRef.current = true;
       playerRef.current.loadVideo(activeItem.videoId, startAt);
       loadedVideoRef.current = activeItem.videoId;
       loadedItemIdRef.current = activeItem.id;
